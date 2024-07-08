@@ -1,3 +1,5 @@
+#include <memory>
+
 #include "slam.hpp"
 
 void SLAM::main_process_timer_callback()
@@ -527,4 +529,159 @@ void SLAM::h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& 
         ekfom_data.h(i) = -norm_p.intensity;
     }
     solve_time_ += omp_get_wtime() - solve_start_;
+}
+
+void SLAM::reset_trigger_callback()
+{
+    RCLCPP_INFO(get_logger(), "reset now");
+    ////////// ROS2 INTERFACE //////////
+    // timer
+    main_process_timer_->cancel();
+    map_publisher_timer_->cancel();
+
+    // some switch to change mode
+    pointcloud2_       = false;
+    publish_effect_    = false;
+    publish_map_       = false;
+    publish_scan_      = false;
+    publish_dense_     = false;
+    publish_scan_body_ = false;
+    publish_path_      = true;
+
+    publish_path_count_ = 0;
+
+    path_              = nav_msgs::msg::Path {};
+    odom_after_mapped_ = nav_msgs::msg::Odometry {};
+    geo_quat_          = geometry_msgs::msg::Quaternion {};
+    msg_body_pose_     = geometry_msgs::msg::PoseStamped {};
+
+    ///////// PROCESS /////////
+    lidar_pushed_    = false;
+    ekf_init_        = false;
+    first_scan_      = true;
+    first_lidar_     = true;
+    runtime_pos_log_ = false;
+    save_pcd_        = false;
+    time_sync_       = false;
+    extrinsic_est_   = true;
+    time_diff_set_   = false;
+    local_map_init   = false;
+
+    std::fill(point_selected_surf_, &point_selected_surf_[100000 - 1], false);
+
+    effect_feat_number_ = 0;
+    frame_number_       = 0;
+
+    average_time_consu_        = 0;
+    average_time_icp_          = 0;
+    average_time_match_        = 0;
+    average_time_incre_        = 0;
+    average_time_solve_        = 0;
+    average_time_const_h_time_ = 0;
+
+    std::fill(epsi_, &epsi_[23 - 1], 0.001);
+
+    kdtree_size_st_      = 0;
+    kdtree_size_end_     = 0;
+    add_point_size_      = 0;
+    kdtree_delete_count_ = 0;
+
+    std::fill(res_last_, &res_last_[100000 - 1], 0);
+    det_range_              = 300.0f;
+    time_diff_lidar_to_imu_ = 0.0;
+
+    res_mean_last_  = 0.05;
+    total_residual_ = 0.0;
+
+    last_timestamp_lidar_ = 0;
+    last_timestamp_imu_   = -1.0;
+
+    gyr_cov_   = 0.1;
+    acc_cov_   = 0.1;
+    b_gyr_cov_ = 0.0001;
+    b_acc_cov_ = 0.0001;
+
+    filter_size_corner_min_ = 0;
+    filter_size_surf_min_   = 0;
+    filter_size_map_min_    = 0;
+    fov_deg_                = 0;
+
+    cube_len_         = 0;
+    half_fov_cos_     = 0;
+    FOV_DEG_          = 0;
+    total_distance_   = 0;
+    lidar_end_time_   = 0;
+    first_lidar_time_ = 0;
+
+    time_diff_lidar_wrt_imu_ = 0.0;
+
+    time_log_count_ = 0;
+    scan_count_     = 0;
+    publish_count_  = 0;
+
+    iter_count_               = 0;
+    feats_down_size_          = 0;
+    number_max_iterations_    = 0;
+    laser_cloud_valid_number_ = 0;
+    pcd_save_interval_        = -1;
+    pcd_index_                = 0;
+
+    point_search_ind_surf_.clear();
+    cub_needrm_.clear();
+    nearest_points_.clear();
+    extrinT_.clear();
+    extrinR_.clear();
+    time_buffer_.clear();
+    lidar_buffer_.clear();
+    imu_buffer_.clear();
+
+    feats_from_map_->clear();
+    feats_undistort_->clear();
+    feats_down_body_->clear();
+    feats_down_world_->clear();
+    normvec_->clear();
+    laser_cloud_ori_->clear();
+    corr_normvect_->clear();
+    feats_array_->clear();
+    cloud_to_publish_->clear();
+
+    local_map_points_ = BoxPointType {};
+
+    ikdtree_.~KD_TREE();
+    new (&ikdtree_) KD_TREE<pcl::PointXYZINormal> {};
+
+    x_axis_point_body_  = V3F {};
+    x_axis_point_world_ = V3F {};
+    euler_cur_          = V3D {};
+    position_last_      = V3D {};
+    lidar_t_wrt_imu_    = V3D {};
+    lidar_r_wrt_imu_    = M3D {};
+
+    // EKF inputs and output
+    measures_    = MeasureGroup {};
+    kf_          = esekfom::esekf<state_ikfom, 12, input_ikfom> {};
+    state_point_ = state_ikfom {};
+    pos_lid_     = vect3 {};
+
+    preprocess_  = std::make_shared<Preprocess>();
+    imu_process_ = std::make_shared<ImuProcess>();
+
+    kdtree_incremental_time_ = 0.0;
+    kdtree_search_time_      = 0.0;
+    kdtree_delete_time_      = 0.0;
+
+    match_time_         = 0;
+    solve_time_         = 0;
+    solve_const_h_time_ = 0;
+
+    main_process_timer_->reset();
+    map_publisher_timer_->reset();
+
+    RCLCPP_INFO(get_logger(), "parameters have reset");
+
+    load_parameter();
+
+    initialize();
+
+    RCLCPP_INFO(get_logger(), "reconstruct now");
 }

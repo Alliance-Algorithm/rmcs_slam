@@ -76,3 +76,8 @@ void SLAM::points_cache_collect()
     PointVector points_history;
     ikdtree_.acquire_removed_points(points_history);
 }
+
+void SLAM::hello_world()
+{
+    RCLCPP_INFO(get_logger(), "hello world");
+}

@@ -64,7 +64,7 @@ static inline std::condition_variable global_signal;
 // class SLAM
 class SLAM : public rclcpp::Node {
 public:
-    explicit SLAM(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+    explicit SLAM();
     ~SLAM();
 
 private:
@@ -84,7 +84,7 @@ private:
 
     // service
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_trigger_;
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr exit_trigger_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_trigger_;
 
     // tf
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
@@ -118,7 +118,6 @@ private:
     void livox_subscription_callback(const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg);
     void imu_subscription_callback(const sensor_msgs::msg::Imu::UniquePtr& msg_in);
 
-    void main_process_timer_callback();
     void map_publish_timer_callback();
 
     void publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
@@ -272,6 +271,12 @@ private:
     double solve_time_         = 0;
     double solve_const_h_time_ = 0;
 
+    void load_parameter();
+    void initialize();
+
+    void main_process_timer_callback();
+    void reset_trigger_callback();
+
     void lasermap_fov_segment();
     bool sync_packages(MeasureGroup& meas);
     void map_incremental();
@@ -309,4 +314,6 @@ private:
         stamp.pose.orientation.z = geo_quat_.z;
         stamp.pose.orientation.w = geo_quat_.w;
     }
+
+    void hello_world();
 };

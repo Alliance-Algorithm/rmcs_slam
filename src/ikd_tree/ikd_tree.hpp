@@ -1,14 +1,12 @@
 #pragma once
 
-#include <algorithm>
-#include <chrono>
-#include <math.h>
-#include <memory.h>
 #include <pcl/point_types.h>
+
+#include <cmath>
+#include <cstdio>
+#include <ctime>
+#include <memory.h>
 #include <pthread.h>
-#include <queue>
-#include <stdio.h>
-#include <time.h>
 #include <unistd.h>
 
 #define EPSS                           1e-6
@@ -17,11 +15,6 @@
 #define DOWNSAMPLE_SWITCH              true
 #define ForceRebuildPercentage         0.2
 #define Q_LEN                          1000000
-
-using namespace std;
-
-// typedef pcl::PointXYZINormal PointType;
-// typedef vector<PointType, Eigen::aligned_allocator<PointType>>  PointVector;
 
 struct BoxPointType {
     float vertex_min[3];
@@ -45,10 +38,6 @@ enum delete_point_storage_set {
 
 template <typename PointType>
 class KD_TREE {
-    // using MANUAL_Q_ = MANUAL_Q<typename PointType>;
-    // using PointVector = std::vector<PointType>;
-
-    // using MANUAL_Q_ = MANUAL_Q<typename PointType>;
 public:
     using PointVector = std::vector<PointType, Eigen::aligned_allocator<PointType>>;
     using Ptr         = std::shared_ptr<KD_TREE<PointType>>;
@@ -88,7 +77,7 @@ public:
     struct PointType_CMP {
         PointType point;
         float dist = 0.0;
-        PointType_CMP(PointType p = PointType(), float d = INFINITY)
+        explicit PointType_CMP(PointType p = PointType(), float d = INFINITY)
         {
             this->point = p;
             this->dist  = d;
@@ -105,7 +94,7 @@ public:
     class MANUAL_HEAP {
 
     public:
-        MANUAL_HEAP(int max_capacity = 100)
+        explicit MANUAL_HEAP(int max_capacity = 100)
 
         {
             cap       = max_capacity;
@@ -124,7 +113,6 @@ public:
             heap[0] = heap[heap_size - 1];
             heap_size--;
             MoveDown(0);
-            return;
         }
         PointType_CMP top()
         {
@@ -137,7 +125,6 @@ public:
             heap[heap_size] = point;
             FloatUp(heap_size);
             heap_size++;
-            return;
         }
         int size()
         {
@@ -146,7 +133,6 @@ public:
         void clear()
         {
             heap_size = 0;
-            return;
         }
 
     private:
@@ -166,7 +152,6 @@ public:
                     break;
             }
             heap[heap_index] = tmp;
-            return;
         }
         void FloatUp(int heap_index)
         {
@@ -181,7 +166,6 @@ public:
                     break;
             }
             heap[heap_index] = tmp;
-            return;
         }
         int heap_size = 0;
         int cap       = 0;
@@ -203,7 +187,6 @@ public:
             counter--;
             if (counter == 0)
                 is_empty = true;
-            return;
         }
         Operation_Logger_Type front()
         {
@@ -219,7 +202,6 @@ public:
             tail     = 0;
             counter  = 0;
             is_empty = true;
-            return;
         }
         void push(Operation_Logger_Type op)
         {
@@ -292,7 +274,7 @@ private:
     static bool point_cmp_z(PointType a, PointType b);
 
 public:
-    KD_TREE(float delete_param = 0.5, float balance_param = 0.6, float box_length = 0.2);
+    explicit KD_TREE(float delete_param = 0.5, float balance_param = 0.6, float box_length = 0.2);
     ~KD_TREE();
     void Set_delete_criterion_param(float delete_param)
     {
@@ -311,13 +293,13 @@ public:
     int validnum();
     void root_alpha(float& alpha_bal, float& alpha_del);
     void Build(PointVector point_cloud);
-    void Nearest_Search(PointType point, int k_nearest, PointVector& Nearest_Points, vector<float>& Point_Distance, float max_dist = INFINITY);
+    void Nearest_Search(PointType point, int k_nearest, PointVector& Nearest_Points, std::vector<float>& Point_Distance, float max_dist = INFINITY);
     void Box_Search(const BoxPointType& Box_of_Point, PointVector& Storage);
-    void Radius_Search(PointType point, const float radius, PointVector& Storage);
+    void Radius_Search(PointType point, float radius, PointVector& Storage);
     int Add_Points(PointVector& PointToAdd, bool downsample_on);
-    void Add_Point_Boxes(vector<BoxPointType>& BoxPoints);
+    void Add_Point_Boxes(std::vector<BoxPointType>& BoxPoints);
     void Delete_Points(PointVector& PointToDel);
-    int Delete_Point_Boxes(vector<BoxPointType>& BoxPoints);
+    int Delete_Point_Boxes(std::vector<BoxPointType>& BoxPoints);
     void flatten(KD_TREE_NODE* root, PointVector& Storage, delete_point_storage_set storage_type);
     void acquire_removed_points(PointVector& removed_points);
     BoxPointType tree_range();
@@ -325,6 +307,3 @@ public:
     KD_TREE_NODE* Root_Node = nullptr;
     int max_queue_size      = 0;
 };
-
-// template <typename PointType>
-// PointType KD_TREE<PointType>::zeroP = PointType(0,0,0);
