@@ -129,7 +129,7 @@ private:
 
     ///////// PROCESS /////////
     std::string root_dir = ROOT_DIR;
-    std::string map_file_path_;
+    std::string map_save_path_;
 
     bool lidar_pushed_    = false;
     bool ekf_init_        = false;

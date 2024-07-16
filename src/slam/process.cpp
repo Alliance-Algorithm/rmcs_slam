@@ -403,7 +403,7 @@ void SLAM::map_incremental()
 void SLAM::save_to_pcd()
 {
     pcl::PCDWriter pcd_writer;
-    pcd_writer.writeBinary(map_file_path_, *cloud_to_publish_);
+    pcd_writer.writeBinary(map_save_path_, *cloud_to_publish_);
 }
 
 void SLAM::h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data)

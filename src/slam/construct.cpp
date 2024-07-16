@@ -33,7 +33,7 @@ void SLAM::load_parameter()
     get_parameter_or<bool>("publish.scan_bodyframe_pub_en", publish_scan_body_, true);
 
     get_parameter_or<int>("max_iteration", number_max_iterations_, 4);
-    get_parameter_or<std::string>("map_file_path", map_file_path_, "");
+    get_parameter_or<std::string>("map_file_path", map_save_path_, "");
 
     get_parameter_or<std::string>("common.lid_topic", lidar_topic_, "/livox/lidar");
     get_parameter_or<std::string>("common.imu_topic", imu_topic_, "/livox/imu");

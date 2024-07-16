@@ -1,12 +1,14 @@
 #include "slam.hpp"
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 
 void SLAM::standard_subscription_callback(const sensor_msgs::msg::PointCloud2::UniquePtr& msg)
 {
     global_mutex.lock();
     scan_count_++;
-    double cur_time              = get_time_sec(msg->header.stamp);
+    double time_current          = get_time_sec(msg->header.stamp);
     double preprocess_start_time = omp_get_wtime();
-    if (!first_lidar_ && cur_time < last_timestamp_lidar_) {
+    if (!first_lidar_ && time_current < last_timestamp_lidar_) {
         std::cerr << "lidar loop back, clear buffer" << std::endl;
         lidar_buffer_.clear();
     }
@@ -17,8 +19,8 @@ void SLAM::standard_subscription_callback(const sensor_msgs::msg::PointCloud2::U
     PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
     preprocess_->process(msg, ptr);
     lidar_buffer_.push_back(ptr);
-    time_buffer_.push_back(cur_time);
-    last_timestamp_lidar_  = cur_time;
+    time_buffer_.push_back(time_current);
+    last_timestamp_lidar_  = time_current;
     s_plot11_[scan_count_] = omp_get_wtime() - preprocess_start_time;
     global_mutex.unlock();
     global_signal.notify_all();
@@ -95,37 +97,36 @@ void SLAM::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::PointCl
 {
     if (publish_scan_) {
         PointCloudXYZI::Ptr laserCloudFullRes(publish_dense_ ? feats_undistort_ : feats_down_body_);
-        int size = laserCloudFullRes->points.size();
+        auto size = laserCloudFullRes->points.size();
         PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
 
         for (int i = 0; i < size; i++) {
             rgb_point_body_to_world(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
         }
 
-        sensor_msgs::msg::PointCloud2 laserCloudmsg;
-        pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-        // laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-        laserCloudmsg.header.stamp    = get_ros_time(lidar_end_time_);
-        laserCloudmsg.header.frame_id = "lidar_init";
-        publisher->publish(laserCloudmsg);
+        sensor_msgs::msg::PointCloud2 msg;
+        pcl::toROSMsg(*laserCloudWorld, msg);
+        msg.header.stamp    = get_ros_time(lidar_end_time_);
+        msg.header.frame_id = "lidar_init";
+        publisher->publish(msg);
         publish_count_ -= PUBFRAME_PERIOD;
     }
 }
 
 void SLAM::publish_frame_body(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher)
 {
-    int size = feats_undistort_->points.size();
+    auto size = feats_undistort_->points.size();
     PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
 
     for (int i = 0; i < size; i++) {
         rgb_point_body_lidar_to_imu(&feats_undistort_->points[i], &laserCloudIMUBody->points[i]);
     }
 
-    sensor_msgs::msg::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
-    laserCloudmsg.header.stamp    = get_ros_time(lidar_end_time_);
-    laserCloudmsg.header.frame_id = "lidar_link";
-    publisher->publish(laserCloudmsg);
+    sensor_msgs::msg::PointCloud2 msg;
+    pcl::toROSMsg(*laserCloudIMUBody, msg);
+    msg.header.stamp    = get_ros_time(lidar_end_time_);
+    msg.header.frame_id = "lidar_link";
+    publisher->publish(msg);
     publish_count_ -= PUBFRAME_PERIOD;
 }
 
@@ -147,19 +148,31 @@ void SLAM::publish_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::S
 
     PointCloudXYZI::Ptr laserCloudFullRes(publish_dense_ ? feats_undistort_ : feats_down_body_);
 
-    int size = laserCloudFullRes->points.size();
+    const auto size = laserCloudFullRes->points.size();
     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
 
     for (int i = 0; i < size; i++) {
         rgb_point_body_to_world(&laserCloudFullRes->points[i], &laserCloudWorld->points[i]);
     }
+
     *cloud_to_publish_ += *laserCloudWorld;
 
-    sensor_msgs::msg::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*cloud_to_publish_, laserCloudmsg);
-    laserCloudmsg.header.stamp    = get_ros_time(lidar_end_time_);
-    laserCloudmsg.header.frame_id = "lidar_init";
-    publisher->publish(laserCloudmsg);
+    auto filtered_cloud = std::make_shared<pcl::PointCloud<PointType>>();
+
+    // down sample
+    static pcl::VoxelGrid<PointType> filter;
+    filter.setLeafSize(0.1f, 0.1f, 0.1f);
+    filter.setInputCloud(cloud_to_publish_);
+    filter.filter(*filtered_cloud);
+
+    // publish
+    sensor_msgs::msg::PointCloud2 msg;
+    pcl::toROSMsg(*filtered_cloud, msg);
+
+    msg.header.stamp    = get_ros_time(lidar_end_time_);
+    msg.header.frame_id = "lidar_init";
+
+    publisher->publish(msg);
 }
 
 void SLAM::publish_odometry(
@@ -222,11 +235,8 @@ void SLAM::publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr&
     msg_body_pose_.header.stamp    = get_ros_time(lidar_end_time_);
     msg_body_pose_.header.frame_id = "lidar_init";
 
-    // lighten the load to keep rviz alive
-    if (publish_path_count_ % 10 == 0) {
-        path_.poses.push_back(msg_body_pose_);
-        publisher->publish(path_);
-    }
+    path_.poses.push_back(msg_body_pose_);
+    publisher->publish(path_);
 
     publish_path_count_++;
 }
@@ -241,15 +251,14 @@ void SLAM::map_save_callback(
     const std_srvs::srv::Trigger::Request::ConstSharedPtr& req,
     const std_srvs::srv::Trigger::Response::SharedPtr& res)
 {
-
-    RCLCPP_INFO(this->get_logger(), "saving map to %s...", map_file_path_.c_str());
+    RCLCPP_INFO(get_logger(), "saving map to %s...", map_save_path_.c_str());
 
     if (save_pcd_) {
         save_to_pcd();
         res->success = true;
-        res->message = "Map saved.";
+        res->message = "map saved.";
     } else {
         res->success = false;
-        res->message = "Map save disabled.";
+        res->message = "map save disabled.";
     }
 }
