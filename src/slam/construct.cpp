@@ -5,23 +5,23 @@ void SLAM::load_parameter()
     extrinT_ = vector<double>(3, 0.0);
     extrinR_ = vector<double>(9, 0.0);
 
-    feats_from_map_   = std::make_shared<PointCloudXYZI>();
-    feats_undistort_  = std::make_shared<PointCloudXYZI>();
-    feats_down_body_  = std::make_shared<PointCloudXYZI>();
+    feats_from_map_ = std::make_shared<PointCloudXYZI>();
+    feats_undistort_ = std::make_shared<PointCloudXYZI>();
+    feats_down_body_ = std::make_shared<PointCloudXYZI>();
     feats_down_world_ = std::make_shared<PointCloudXYZI>();
     cloud_to_publish_ = std::make_shared<PointCloudXYZI>();
-    normvec_          = std::make_shared<PointCloudXYZI>(100000, 1);
-    laser_cloud_ori_  = std::make_shared<PointCloudXYZI>(100000, 1);
-    corr_normvect_    = std::make_shared<PointCloudXYZI>(100000, 1);
+    normvec_ = std::make_shared<PointCloudXYZI>(100000, 1);
+    laser_cloud_ori_ = std::make_shared<PointCloudXYZI>(100000, 1);
+    corr_normvect_ = std::make_shared<PointCloudXYZI>(100000, 1);
 
-    x_axis_point_body_  = V3F(LIDAR_SP_LEN, 0.0, 0.0);
+    x_axis_point_body_ = V3F(LIDAR_SP_LEN, 0.0, 0.0);
     x_axis_point_world_ = V3F(LIDAR_SP_LEN, 0.0, 0.0);
-    euler_cur_          = V3D();
-    position_last_      = V3D(Zero3d);
-    lidar_t_wrt_imu_    = V3D(Zero3d);
-    lidar_r_wrt_imu_    = M3D(Eye3d);
+    euler_cur_ = V3D();
+    position_last_ = V3D(Zero3d);
+    lidar_t_wrt_imu_ = V3D(Zero3d);
+    lidar_r_wrt_imu_ = M3D(Eye3d);
 
-    preprocess_  = std::make_shared<Preprocess>();
+    preprocess_ = std::make_shared<Preprocess>();
     imu_process_ = std::make_shared<ImuProcess>();
 
     // get parameter
@@ -74,10 +74,10 @@ void SLAM::load_parameter()
 
 void SLAM::initialize()
 {
-    path_.header.stamp    = get_clock()->now();
+    path_.header.stamp = get_clock()->now();
     path_.header.frame_id = "lidar_init";
 
-    FOV_DEG_      = (fov_deg_ + 10.0) > 179.9 ? 179.9 : (fov_deg_ + 10.0);
+    FOV_DEG_ = (fov_deg_ + 10.0) > 179.9 ? 179.9 : (fov_deg_ + 10.0);
     half_fov_cos_ = cos((FOV_DEG_) * 0.5 * PI_M / 180.0);
 
     feats_array_ = std::make_shared<PointCloudXYZI>();
@@ -148,18 +148,17 @@ SLAM::SLAM()
             imu_subscription_callback(msg);
         });
 
-    cloud_registered_publisher_      = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered", 20);
+    cloud_registered_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered", 20);
     cloud_registered_body_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered_body", 20);
-    cloud_effected_publisher_        = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_effected", 20);
-    laser_map_publisher_             = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/laser_map", 20);
-    position_publisher_              = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/position", 20);
-    path_publisher_                  = create_publisher<nav_msgs::msg::Path>("/rmcs_slam/path", 20);
+    cloud_effected_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_effected", 20);
+    laser_map_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/laser_map", 20);
+    position_publisher_ = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/position", 20);
+    path_publisher_ = create_publisher<nav_msgs::msg::Path>("/rmcs_slam/path", 20);
 
-    tf_broadcaster_        = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-    tf_static_broadcaster_ = std::make_unique<tf2_ros::StaticTransformBroadcaster>(*this);
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     using namespace std::chrono_literals;
-    main_process_timer_  = rclcpp::create_timer(this, get_clock(), 10ms, [this] { main_process_timer_callback(); });
+    main_process_timer_ = rclcpp::create_timer(this, get_clock(), 10ms, [this] { main_process_timer_callback(); });
     map_publisher_timer_ = rclcpp::create_timer(this, get_clock(), 1s, [this] { map_publish_timer_callback(); });
 
     map_save_trigger_ = create_service<std_srvs::srv::Trigger>(
@@ -177,19 +176,6 @@ SLAM::SLAM()
             p2->message = "reset now";
             p2->success = true;
         });
-
-    geometry_msgs::msg::TransformStamped t;
-    t.header.stamp            = get_clock()->now();
-    t.header.frame_id         = "lidar_init";
-    t.child_frame_id          = "world";
-    t.transform.translation.x = 0;
-    t.transform.translation.y = 0;
-    t.transform.translation.z = 0;
-    t.transform.rotation.w    = 0;
-    t.transform.rotation.x    = 0;
-    t.transform.rotation.y    = 1;
-    t.transform.rotation.z    = 0;
-    tf_static_broadcaster_->sendTransform(t);
 
     RCLCPP_INFO(get_logger(), "node init finished");
 }

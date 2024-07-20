@@ -35,9 +35,9 @@
 #include <rclcpp/rclcpp.hpp>
 
 // some definitions
-#define INIT_TIME       (0.1)
+#define INIT_TIME (0.1)
 #define LASER_POINT_COV (0.001)
-#define MAXN            (720000)
+#define MAXN (720000)
 #define PUBFRAME_PERIOD (20)
 
 // let a static c style function pointer accesses the no-static member function
@@ -88,20 +88,19 @@ private:
 
     // tf
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::unique_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
 
     // timer
     rclcpp::TimerBase::SharedPtr main_process_timer_;
     rclcpp::TimerBase::SharedPtr map_publisher_timer_;
 
     // some switch to change mode
-    bool pointcloud2_       = false;
-    bool publish_effect_    = false;
-    bool publish_map_       = false;
-    bool publish_scan_      = false;
-    bool publish_dense_     = false;
+    bool pointcloud2_ = false;
+    bool publish_effect_ = false;
+    bool publish_map_ = false;
+    bool publish_scan_ = false;
+    bool publish_dense_ = false;
     bool publish_scan_body_ = false;
-    bool publish_path_      = true;
+    bool publish_path_ = true;
 
     int publish_path_count_ = 0;
 
@@ -131,76 +130,76 @@ private:
     std::string root_dir = ROOT_DIR;
     std::string map_save_path_;
 
-    bool lidar_pushed_    = false;
-    bool ekf_init_        = false;
-    bool first_scan_      = true;
-    bool first_lidar_     = true;
+    bool lidar_pushed_ = false;
+    bool ekf_init_ = false;
+    bool first_scan_ = true;
+    bool first_lidar_ = true;
     bool runtime_pos_log_ = false;
-    bool save_pcd_        = false;
-    bool time_sync_       = false;
-    bool extrinsic_est_   = true;
-    bool time_diff_set_   = false;
-    bool local_map_init   = false;
+    bool save_pcd_ = false;
+    bool time_sync_ = false;
+    bool extrinsic_est_ = true;
+    bool time_diff_set_ = false;
+    bool local_map_init = false;
 
     bool point_selected_surf_[100000] = { false };
 
     int effect_feat_number_ = 0;
-    int frame_number_       = 0;
+    int frame_number_ = 0;
 
-    double average_time_consu_        = 0;
-    double average_time_icp_          = 0;
-    double average_time_match_        = 0;
-    double average_time_incre_        = 0;
-    double average_time_solve_        = 0;
+    double average_time_consu_ = 0;
+    double average_time_icp_ = 0;
+    double average_time_match_ = 0;
+    double average_time_incre_ = 0;
+    double average_time_solve_ = 0;
     double average_time_const_h_time_ = 0;
 
     double epsi_[23] = { 0.001 };
 
-    int kdtree_size_st_      = 0;
-    int kdtree_size_end_     = 0;
-    int add_point_size_      = 0;
+    int kdtree_size_st_ = 0;
+    int kdtree_size_end_ = 0;
+    int add_point_size_ = 0;
     int kdtree_delete_count_ = 0;
 
     float res_last_[100000];
-    float det_range_               = 300.0f;
-    const float mov_threshold_     = 1.5f;
+    float det_range_ = 300.0f;
+    const float mov_threshold_ = 1.5f;
     double time_diff_lidar_to_imu_ = 0.0;
 
-    double res_mean_last_  = 0.05;
+    double res_mean_last_ = 0.05;
     double total_residual_ = 0.0;
 
     double last_timestamp_lidar_ = 0;
-    double last_timestamp_imu_   = -1.0;
+    double last_timestamp_imu_ = -1.0;
 
-    double gyr_cov_   = 0.1;
-    double acc_cov_   = 0.1;
+    double gyr_cov_ = 0.1;
+    double acc_cov_ = 0.1;
     double b_gyr_cov_ = 0.0001;
     double b_acc_cov_ = 0.0001;
 
     double filter_size_corner_min_ = 0;
-    double filter_size_surf_min_   = 0;
-    double filter_size_map_min_    = 0;
-    double fov_deg_                = 0;
+    double filter_size_surf_min_ = 0;
+    double filter_size_map_min_ = 0;
+    double fov_deg_ = 0;
 
-    double cube_len_         = 0;
-    double half_fov_cos_     = 0;
-    double FOV_DEG_          = 0;
-    double total_distance_   = 0;
-    double lidar_end_time_   = 0;
+    double cube_len_ = 0;
+    double half_fov_cos_ = 0;
+    double FOV_DEG_ = 0;
+    double total_distance_ = 0;
+    double lidar_end_time_ = 0;
     double first_lidar_time_ = 0;
 
     double time_diff_lidar_wrt_imu_ = 0.0;
 
     int time_log_count_ = 0;
-    int scan_count_     = 0;
-    int publish_count_  = 0;
+    int scan_count_ = 0;
+    int publish_count_ = 0;
 
-    int iter_count_               = 0;
-    int feats_down_size_          = 0;
-    int number_max_iterations_    = 0;
+    int iter_count_ = 0;
+    int feats_down_size_ = 0;
+    int number_max_iterations_ = 0;
     int laser_cloud_valid_number_ = 0;
-    int pcd_save_interval_        = -1;
-    int pcd_index_                = 0;
+    int pcd_save_interval_ = -1;
+    int pcd_index_ = 0;
 
     vector<vector<int>> point_search_ind_surf_;
     vector<BoxPointType> cub_needrm_;
@@ -251,8 +250,8 @@ private:
     ofstream fout_dbg_;
 
     double kdtree_incremental_time_ = 0.0;
-    double kdtree_search_time_      = 0.0;
-    double kdtree_delete_time_      = 0.0;
+    double kdtree_search_time_ = 0.0;
+    double kdtree_delete_time_ = 0.0;
 
     double t1_[MAXN];
     double s_plot1_[MAXN];
@@ -267,8 +266,8 @@ private:
     double s_plot10_[MAXN];
     double s_plot11_[MAXN];
 
-    double match_time_         = 0;
-    double solve_time_         = 0;
+    double match_time_ = 0;
+    double solve_time_ = 0;
     double solve_const_h_time_ = 0;
 
     void load_parameter();
@@ -293,22 +292,22 @@ private:
     void points_cache_collect();
 
     template <typename T>
-    void point_body_to_world(const Matrix<T, 3, 1>& pi, Matrix<T, 3, 1>& po)
+    void point_body_to_world(const Eigen::Matrix<T, 3, 1>& src, Eigen::Matrix<T, 3, 1>& dst)
     {
-        V3D p_body(pi[0], pi[1], pi[2]);
+        V3D p_body(src[0], src[1], src[2]);
         V3D p_global(state_point_.rot * (state_point_.offset_R_L_I * p_body + state_point_.offset_T_L_I) + state_point_.pos);
 
-        po[0] = p_global(0);
-        po[1] = p_global(1);
-        po[2] = p_global(2);
+        dst[0] = p_global(0);
+        dst[1] = p_global(1);
+        dst[2] = p_global(2);
     }
 
     template <typename T>
     void set_pose_stamp(T& stamp)
     {
-        stamp.pose.position.x    = state_point_.pos(0);
-        stamp.pose.position.y    = state_point_.pos(1);
-        stamp.pose.position.z    = state_point_.pos(2);
+        stamp.pose.position.x = state_point_.pos(0);
+        stamp.pose.position.y = state_point_.pos(1);
+        stamp.pose.position.z = state_point_.pos(2);
         stamp.pose.orientation.x = geo_quat_.x;
         stamp.pose.orientation.y = geo_quat_.y;
         stamp.pose.orientation.z = geo_quat_.z;
