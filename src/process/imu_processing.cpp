@@ -277,7 +277,7 @@ void ImuProcess::process(const MeasureGroup& meas, esekfom::esekf<state_ikfom, 1
             cov_acc = cov_acc_scale;
             cov_gyr = cov_gyr_scale;
 
-            std::cout << "imu_process: imu initialize done" << std::endl;
+            std::cout << "[imu_process]: imu initialize done" << std::endl;
 
             fout_imu.open(DEBUG_FILE_DIR("imu.txt"), std::ios::out);
         }

@@ -74,7 +74,8 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_registered_body_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_effected_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr laser_map_publisher_;
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr position_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_publisher_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
     // subscription

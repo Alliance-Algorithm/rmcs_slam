@@ -9,12 +9,12 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define EPSS                           1e-6
-#define Minimal_Unbalanced_Tree_Size   10
+#define EPSS 1e-6
+#define Minimal_Unbalanced_Tree_Size 10
 #define Multi_Thread_Rebuild_Point_Num 1500
-#define DOWNSAMPLE_SWITCH              true
-#define ForceRebuildPercentage         0.2
-#define Q_LEN                          1000000
+#define DOWNSAMPLE_SWITCH true
+#define ForceRebuildPercentage 0.2
+#define Q_LEN 1000000
 
 struct BoxPointType {
     float vertex_min[3];
@@ -40,27 +40,27 @@ template <typename PointType>
 class KD_TREE {
 public:
     using PointVector = std::vector<PointType, Eigen::aligned_allocator<PointType>>;
-    using Ptr         = std::shared_ptr<KD_TREE<PointType>>;
+    using Ptr = std::shared_ptr<KD_TREE<PointType>>;
 
     struct KD_TREE_NODE {
         PointType point;
         int division_axis;
-        int TreeSize                  = 1;
-        int invalid_point_num         = 0;
-        int down_del_num              = 0;
-        bool point_deleted            = false;
-        bool tree_deleted             = false;
+        int TreeSize = 1;
+        int invalid_point_num = 0;
+        int down_del_num = 0;
+        bool point_deleted = false;
+        bool tree_deleted = false;
         bool point_downsample_deleted = false;
-        bool tree_downsample_deleted  = false;
-        bool need_push_down_to_left   = false;
-        bool need_push_down_to_right  = false;
-        bool working_flag             = false;
+        bool tree_downsample_deleted = false;
+        bool need_push_down_to_left = false;
+        bool need_push_down_to_right = false;
+        bool working_flag = false;
         pthread_mutex_t push_down_mutex_lock;
         float node_range_x[2], node_range_y[2], node_range_z[2];
         float radius_sq;
-        KD_TREE_NODE* left_son_ptr  = nullptr;
+        KD_TREE_NODE* left_son_ptr = nullptr;
         KD_TREE_NODE* right_son_ptr = nullptr;
-        KD_TREE_NODE* father_ptr    = nullptr;
+        KD_TREE_NODE* father_ptr = nullptr;
         // For paper data record
         float alpha_del;
         float alpha_bal;
@@ -80,7 +80,7 @@ public:
         explicit PointType_CMP(PointType p = PointType(), float d = INFINITY)
         {
             this->point = p;
-            this->dist  = d;
+            this->dist = d;
         };
         bool operator<(const PointType_CMP& a) const
         {
@@ -97,8 +97,8 @@ public:
         explicit MANUAL_HEAP(int max_capacity = 100)
 
         {
-            cap       = max_capacity;
-            heap      = new PointType_CMP[max_capacity];
+            cap = max_capacity;
+            heap = new PointType_CMP[max_capacity];
             heap_size = 0;
         }
 
@@ -139,15 +139,15 @@ public:
         PointType_CMP* heap;
         void MoveDown(int heap_index)
         {
-            int l             = heap_index * 2 + 1;
+            int l = heap_index * 2 + 1;
             PointType_CMP tmp = heap[heap_index];
             while (l < heap_size) {
                 if (l + 1 < heap_size && heap[l] < heap[l + 1])
                     l++;
                 if (tmp < heap[l]) {
                     heap[heap_index] = heap[l];
-                    heap_index       = l;
-                    l                = heap_index * 2 + 1;
+                    heap_index = l;
+                    l = heap_index * 2 + 1;
                 } else
                     break;
             }
@@ -155,20 +155,20 @@ public:
         }
         void FloatUp(int heap_index)
         {
-            int ancestor      = (heap_index - 1) / 2;
+            int ancestor = (heap_index - 1) / 2;
             PointType_CMP tmp = heap[heap_index];
             while (heap_index > 0) {
                 if (heap[ancestor] < tmp) {
                     heap[heap_index] = heap[ancestor];
-                    heap_index       = ancestor;
-                    ancestor         = (heap_index - 1) / 2;
+                    heap_index = ancestor;
+                    ancestor = (heap_index - 1) / 2;
                 } else
                     break;
             }
             heap[heap_index] = tmp;
         }
         int heap_size = 0;
-        int cap       = 0;
+        int cap = 0;
     };
 
     class MANUAL_Q {
@@ -198,9 +198,9 @@ public:
         }
         void clear()
         {
-            head     = 0;
-            tail     = 0;
-            counter  = 0;
+            head = 0;
+            tail = 0;
+            counter = 0;
             is_empty = true;
         }
         void push(Operation_Logger_Type op)
@@ -225,7 +225,7 @@ public:
 private:
     // Multi-thread Tree Rebuild
     bool termination_flag = false;
-    bool rebuild_flag     = false;
+    bool rebuild_flag = false;
     pthread_t rebuild_thread;
     pthread_mutex_t termination_flag_mutex_lock, rebuild_ptr_mutex_lock, working_flag_mutex, search_flag_mutex;
     pthread_mutex_t rebuild_logger_mutex_lock, points_deleted_rebuild_mutex_lock;
@@ -233,7 +233,7 @@ private:
     MANUAL_Q Rebuild_Logger;
     PointVector Rebuild_PCL_Storage;
     KD_TREE_NODE** Rebuild_Ptr = nullptr;
-    int search_mutex_counter   = 0;
+    int search_mutex_counter = 0;
     static void* multi_thread_ptr(void* arg);
     void multi_thread_rebuild();
     void start_thread();
@@ -242,10 +242,10 @@ private:
     // KD Tree Functions and augmented variables
     int Treesize_tmp = 0, Validnum_tmp = 0;
     float alpha_bal_tmp = 0.5, alpha_del_tmp = 0.0;
-    float delete_criterion_param   = 0.5f;
-    float balance_criterion_param  = 0.7f;
-    float downsample_size          = 0.2f;
-    bool Delete_Storage_Disabled   = false;
+    float delete_criterion_param = 0.5f;
+    float balance_criterion_param = 0.7f;
+    float downsample_size = 0.2f;
+    bool Delete_Storage_Disabled = false;
     KD_TREE_NODE* STATIC_ROOT_NODE = nullptr;
     PointVector Points_deleted;
     PointVector Downsample_Storage;
@@ -305,5 +305,5 @@ public:
     BoxPointType tree_range();
     PointVector PCL_Storage;
     KD_TREE_NODE* Root_Node = nullptr;
-    int max_queue_size      = 0;
+    int max_queue_size = 0;
 };

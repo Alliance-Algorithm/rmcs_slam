@@ -178,7 +178,7 @@ void SLAM::publish_odometry(
     const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr& publisher,
     const std::unique_ptr<tf2_ros::TransformBroadcaster>& broadcaster)
 {
-
+    // odometry
     odom_after_mapped_.header.frame_id = "lidar_init";
     odom_after_mapped_.child_frame_id = "lidar_link";
 
@@ -199,17 +199,21 @@ void SLAM::publish_odometry(
         odom_after_mapped_.pose.covariance[i * 6 + 5] = P(k, 2);
     }
 
+    // tf tree
     geometry_msgs::msg::TransformStamped stamp;
 
     stamp.header.frame_id = "lidar_link";
     stamp.child_frame_id = "lidar_init";
 
     auto t = Eigen::Affine3d(Eigen::Translation3d(
-        odom_after_mapped_.pose.pose.position.x, odom_after_mapped_.pose.pose.position.y,
+        odom_after_mapped_.pose.pose.position.x,
+        odom_after_mapped_.pose.pose.position.y,
         odom_after_mapped_.pose.pose.position.z));
     auto r = Eigen::Affine3d(Eigen::Quaterniond(
-        odom_after_mapped_.pose.pose.orientation.w, odom_after_mapped_.pose.pose.orientation.x,
-        odom_after_mapped_.pose.pose.orientation.y, odom_after_mapped_.pose.pose.orientation.z));
+        odom_after_mapped_.pose.pose.orientation.w,
+        odom_after_mapped_.pose.pose.orientation.x,
+        odom_after_mapped_.pose.pose.orientation.y,
+        odom_after_mapped_.pose.pose.orientation.z));
 
     auto transform = (t * r).inverse();
 
@@ -225,6 +229,19 @@ void SLAM::publish_odometry(
     stamp.transform.rotation.z = rotation.z();
 
     broadcaster->sendTransform(stamp);
+
+    // publish the pose only with less data
+    auto pose = geometry_msgs::msg::PoseStamped {};
+    pose.header = odom_after_mapped_.header;
+    pose.pose.position.x = odom_after_mapped_.pose.pose.position.x;
+    pose.pose.position.y = odom_after_mapped_.pose.pose.position.y;
+    pose.pose.position.z = odom_after_mapped_.pose.pose.position.z;
+    pose.pose.orientation.w = odom_after_mapped_.pose.pose.orientation.w;
+    pose.pose.orientation.x = odom_after_mapped_.pose.pose.orientation.x;
+    pose.pose.orientation.y = odom_after_mapped_.pose.pose.orientation.y;
+    pose.pose.orientation.z = odom_after_mapped_.pose.pose.orientation.z;
+
+    pose_publisher_->publish(pose);
 }
 
 void SLAM::publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr& publisher)

@@ -32,7 +32,7 @@ def generate_launch_description():
         description="Yaml config file path",
     )
     declare_config_file_cmd = DeclareLaunchArgument(
-        "config_file", default_value="mid360.yaml", description="Config file"
+        "config_file", default_value="offline.yaml", description="Config file"
     )
     declare_rviz_cmd = DeclareLaunchArgument(
         "rviz", default_value="false", description="Use rviz to monitor results"
@@ -43,7 +43,7 @@ def generate_launch_description():
         description="RViz config file path",
     )
 
-    rmcs_slam_node = Node(
+    rmcs_slam = Node(
         package="rmcs_slam",
         executable="rmcs_slam_exe",
         parameters=[
@@ -52,21 +52,23 @@ def generate_launch_description():
         ],
         output="screen",
     )
-    rviz_node = Node(
+
+    rviz = Node(
         package="rviz2",
         executable="rviz2",
         arguments=["-d", rviz_cfg],
         condition=IfCondition(rviz_use),
     )
 
-    ld = LaunchDescription()
-    ld.add_action(declare_use_sim_time_cmd)
-    ld.add_action(declare_config_path_cmd)
-    ld.add_action(declare_config_file_cmd)
-    ld.add_action(declare_rviz_cmd)
-    ld.add_action(declare_rviz_config_path_cmd)
+    description = LaunchDescription()
 
-    ld.add_action(rmcs_slam_node)
-    ld.add_action(rviz_node)
+    description.add_action(declare_use_sim_time_cmd)
+    description.add_action(declare_config_path_cmd)
+    description.add_action(declare_config_file_cmd)
+    description.add_action(declare_rviz_cmd)
+    description.add_action(declare_rviz_config_path_cmd)
 
-    return ld
+    description.add_action(rmcs_slam)
+    description.add_action(rviz)
+
+    return description

@@ -126,7 +126,7 @@ void SLAM::main_process_timer_callback()
         double t_update_end = omp_get_wtime();
 
         /******* Publish odometry *******/
-        publish_odometry(position_publisher_, tf_broadcaster_);
+        publish_odometry(odometry_publisher_, tf_broadcaster_);
 
         /*** add the feature points to map kdtree ***/
         t3 = omp_get_wtime();

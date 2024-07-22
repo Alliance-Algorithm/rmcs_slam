@@ -152,7 +152,8 @@ SLAM::SLAM()
     cloud_registered_body_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered_body", 20);
     cloud_effected_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_effected", 20);
     laser_map_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/laser_map", 20);
-    position_publisher_ = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/position", 20);
+    pose_publisher_ = create_publisher<geometry_msgs::msg::PoseStamped>("/rmcs_slam/pose", 20);
+    odometry_publisher_ = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/odometry", 20);
     path_publisher_ = create_publisher<nav_msgs::msg::Path>("/rmcs_slam/path", 20);
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
