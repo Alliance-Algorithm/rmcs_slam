@@ -32,7 +32,7 @@ def generate_launch_description():
         description="Yaml config file path",
     )
     declare_config_file_cmd = DeclareLaunchArgument(
-        "config_file", default_value="offline.yaml", description="Config file"
+        "config_file", default_value="config.yaml", description="Config file"
     )
     declare_rviz_cmd = DeclareLaunchArgument(
         "rviz", default_value="false", description="Use rviz to monitor results"

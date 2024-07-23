@@ -126,9 +126,9 @@ SLAM::SLAM()
     fout_dbg_.open(DEBUG_FILE_DIR("dbg.txt"), ios::out);
 
     if (fout_pre_ && fout_out_)
-        std::cout << "log file opened at: " ROOT_DIR << '\n';
+        RCLCPP_INFO(get_logger(), "log file opened at: %s", ROOT_DIR);
     else
-        std::cout << "log file doesn't exist at " ROOT_DIR << '\n';
+        RCLCPP_INFO(get_logger(), "log file doesn't exist at %s", ROOT_DIR);
 
     // ros2 interface
     if (preprocess_->lidar_type == AVIA && !pointcloud2_) {
