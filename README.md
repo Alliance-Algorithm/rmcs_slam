@@ -18,7 +18,6 @@
 
     [how to install](https://github.com/Livox-SDK/livox_ros_driver2)
     ```json
-    # the ip of lidar
     "ip": "192.168.1.156"
     "ip": "192.168.1.120"
     ```
