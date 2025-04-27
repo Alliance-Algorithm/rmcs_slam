@@ -1,8 +1,7 @@
-#include "slam/slam.hpp"
+#include "slam.hpp"
 #include <rclcpp/executors.hpp>
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
 
     rclcpp::spin(std::make_shared<SLAM>());
