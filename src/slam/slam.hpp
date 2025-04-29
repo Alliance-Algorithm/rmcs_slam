@@ -52,14 +52,17 @@ public:
 };
 
 // global parameter
-static inline std::mutex global_mutex;
-static inline std::condition_variable global_signal;
+inline std::mutex global_mutex;
+inline std::condition_variable global_signal;
 
 // class SLAM
 class SLAM : public rclcpp::Node {
 public:
     explicit SLAM();
     ~SLAM() override;
+
+    SLAM(const SLAM&)            = delete;
+    SLAM& operator=(const SLAM&) = delete;
 
 private:
     ////////// ROS2 INTERFACE //////////
@@ -301,7 +304,7 @@ private:
     void h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data);
 
     ////////// TOOL //////////
-    static void signal_handle(int signal);
+    static void signal_callback(int signal);
     static void point_body_to_world_ikfom(PointType const* in, PointType* out, state_ikfom& state);
     void dump_lio_state_to_log(FILE* file);
     void point_body_to_world(PointType const* pi, PointType* po);
@@ -331,8 +334,6 @@ private:
         stamp.pose.orientation.z = geo_quat_.z;
         stamp.pose.orientation.w = geo_quat_.w;
     }
-
-    void hello_world();
 
     template <typename... Args>
     void rclcpp_info(Args... args) {

@@ -1,7 +1,9 @@
 #include "synthesizer.hpp"
 
 using namespace rmcs;
+
 struct Synthesizer::Impl {
+
     std::shared_ptr<rclcpp::Subscription<LivoxMsg>> pointcloud_a_subscription;
     std::shared_ptr<rclcpp::Subscription<LivoxMsg>> pointcloud_b_subscription;
 
@@ -33,6 +35,9 @@ struct Synthesizer::Impl {
         }
 
         pointcloud_publisher->publish(*msg);
+    }
+
+    void update_imu(const std::unique_ptr<ImuMsg>& msg, const Eigen::Quaterniond& rotation) {
     }
 
     void upload_main_pointcloud(const std::unique_ptr<LivoxMsg>& msg) {

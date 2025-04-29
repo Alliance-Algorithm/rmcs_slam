@@ -1,5 +1,100 @@
 #include "slam.hpp"
 
+static const auto option = rclcpp::NodeOptions()
+                               .allow_undeclared_parameters(true)
+                               .automatically_declare_parameters_from_overrides(true);
+
+SLAM::SLAM()
+    : Node("rmcs_slam", option) {
+
+    std::signal(SIGINT, signal_callback);
+
+    load_parameter();
+    initialize();
+
+    // ros2 interface
+
+    // 激光雷达相关初始化
+    if (!enable_lidar_a_ && !enable_lidar_b_)
+        throw std::runtime_error("Is there any lidar available? please configure a lidar at least");
+
+    const auto lidar_qos = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
+    const auto imu_qos   = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
+
+    if (enable_lidar_a_) {
+        lidar_a_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
+            lidar_a_topic_, lidar_qos,
+            [this](const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg) {
+                lidar_a_subscription_callback(msg);
+            });
+        imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
+            imu_a_topic_, imu_qos, [this](const sensor_msgs::msg::Imu::UniquePtr& msg) {
+                imu_subscription_callback(msg);
+            });
+    }
+
+    if (enable_lidar_b_) {
+        lidar_b_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
+            lidar_b_topic_, lidar_qos,
+            [this](const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg) {
+                lidar_b_subscription_callback(msg);
+            });
+        if (!enable_lidar_a_)
+            imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
+                imu_b_topic_, imu_qos, [this](const sensor_msgs::msg::Imu::UniquePtr& msg) {
+                    imu_subscription_callback(msg);
+                });
+    }
+
+    // 由于队内暂无其他类型的激光雷达，故暂时注释掉改订阅
+    // standard_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+    //     lidar_topic_, rclcpp::SensorDataQoS(),
+    //     [this](const sensor_msgs::msg::PointCloud2::UniquePtr& msg) {
+    //         standard_subscription_callback(msg);
+    //     });
+
+    // 点云及其他信息的发布初始化
+    cloud_registered_publisher_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered", 20);
+    cloud_registered_body_publisher_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered_body", 20);
+    cloud_effected_publisher_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_effected", 20);
+    laser_map_publisher_ =
+        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/laser_map", 20);
+    pose_publisher_     = create_publisher<geometry_msgs::msg::PoseStamped>("/rmcs_slam/pose", 20);
+    odometry_publisher_ = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/odometry", 20);
+    path_publisher_     = create_publisher<nav_msgs::msg::Path>("/rmcs_slam/path", 20);
+
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    using namespace std::chrono_literals;
+    main_process_timer_ =
+        rclcpp::create_timer(this, get_clock(), 10ms, [this] { main_process_timer_callback(); });
+    map_publisher_timer_ =
+        rclcpp::create_timer(this, get_clock(), 1s, [this] { map_publish_timer_callback(); });
+
+    map_save_trigger_ = create_service<std_srvs::srv::Trigger>(
+        "/rmcs_slam/map_save", [this](
+                                   const std_srvs::srv::Trigger::Request::ConstSharedPtr& p1,
+                                   const std_srvs::srv::Trigger::Response::SharedPtr& p2) {
+            RCLCPP_INFO(get_logger(), "service arrived: /rmcs_slam/map_save");
+            map_save_callback(p1, p2);
+        });
+
+    reset_trigger_ = create_service<std_srvs::srv::Trigger>(
+        "/rmcs_slam/reset", [this](
+                                const std_srvs::srv::Trigger::Request::ConstSharedPtr& p1,
+                                const std_srvs::srv::Trigger::Response::SharedPtr& p2) {
+            RCLCPP_INFO(get_logger(), "service arrived: /rmcs_slam/reset");
+            reset_trigger_callback();
+            p2->message = "reset now";
+            p2->success = true;
+        });
+
+    RCLCPP_INFO(get_logger(), "node init finished");
+}
+
 void SLAM::load_parameter() {
     extrinT_ = std::vector<double>(3, 0.0);
     extrinR_ = std::vector<double>(9, 0.0);
@@ -124,100 +219,6 @@ void SLAM::initialize() {
         [this](state_ikfom& a, esekfom::dyn_share_datastruct<double>& b) { h_share_model(a, b); });
     kf_.init_dyn_share(
         get_f, df_dx, df_dw, FuncHelperClass::static_function, number_max_iterations_, epsi_);
-}
-
-static const auto option = rclcpp::NodeOptions()
-                               .allow_undeclared_parameters(true)
-                               .automatically_declare_parameters_from_overrides(true);
-SLAM::SLAM()
-    : Node("rmcs_slam", option) {
-
-    std::signal(SIGINT, signal_handle);
-
-    load_parameter();
-    initialize();
-
-    // ros2 interface
-
-    // 激光雷达相关初始化
-    if (!enable_lidar_a_ && !enable_lidar_b_)
-        throw std::runtime_error("Is there any lidar available? please configure a lidar at least");
-
-    const auto lidar_qos = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
-    const auto imu_qos   = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
-
-    if (enable_lidar_a_) {
-        lidar_a_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            lidar_a_topic_, lidar_qos,
-            [this](const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg) {
-                lidar_a_subscription_callback(msg);
-            });
-        imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
-            imu_a_topic_, imu_qos, [this](const sensor_msgs::msg::Imu::UniquePtr& msg) {
-                imu_subscription_callback(msg);
-            });
-    }
-
-    if (enable_lidar_b_) {
-        lidar_b_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            lidar_b_topic_, lidar_qos,
-            [this](const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg) {
-                lidar_b_subscription_callback(msg);
-            });
-        if (!enable_lidar_a_)
-            imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
-                imu_b_topic_, imu_qos, [this](const sensor_msgs::msg::Imu::UniquePtr& msg) {
-                    imu_subscription_callback(msg);
-                });
-    }
-
-    // 由于队内暂无其他类型的激光雷达，故暂时注释掉改订阅
-    // standard_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-    //     lidar_topic_, rclcpp::SensorDataQoS(),
-    //     [this](const sensor_msgs::msg::PointCloud2::UniquePtr& msg) {
-    //         standard_subscription_callback(msg);
-    //     });
-
-    // 点云及其他信息的发布初始化
-    cloud_registered_publisher_ =
-        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered", 20);
-    cloud_registered_body_publisher_ =
-        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_registered_body", 20);
-    cloud_effected_publisher_ =
-        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/cloud_effected", 20);
-    laser_map_publisher_ =
-        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_slam/laser_map", 20);
-    pose_publisher_     = create_publisher<geometry_msgs::msg::PoseStamped>("/rmcs_slam/pose", 20);
-    odometry_publisher_ = create_publisher<nav_msgs::msg::Odometry>("/rmcs_slam/odometry", 20);
-    path_publisher_     = create_publisher<nav_msgs::msg::Path>("/rmcs_slam/path", 20);
-
-    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-    using namespace std::chrono_literals;
-    main_process_timer_ =
-        rclcpp::create_timer(this, get_clock(), 10ms, [this] { main_process_timer_callback(); });
-    map_publisher_timer_ =
-        rclcpp::create_timer(this, get_clock(), 1s, [this] { map_publish_timer_callback(); });
-
-    map_save_trigger_ = create_service<std_srvs::srv::Trigger>(
-        "/rmcs_slam/map_save", [this](
-                                   const std_srvs::srv::Trigger::Request::ConstSharedPtr& p1,
-                                   const std_srvs::srv::Trigger::Response::SharedPtr& p2) {
-            RCLCPP_INFO(get_logger(), "service arrived: /rmcs_slam/map_save");
-            map_save_callback(p1, p2);
-        });
-
-    reset_trigger_ = create_service<std_srvs::srv::Trigger>(
-        "/rmcs_slam/reset", [this](
-                                const std_srvs::srv::Trigger::Request::ConstSharedPtr& p1,
-                                const std_srvs::srv::Trigger::Response::SharedPtr& p2) {
-            RCLCPP_INFO(get_logger(), "service arrived: /rmcs_slam/reset");
-            reset_trigger_callback();
-            p2->message = "reset now";
-            p2->success = true;
-        });
-
-    RCLCPP_INFO(get_logger(), "node init finished");
 }
 
 SLAM::~SLAM() {
