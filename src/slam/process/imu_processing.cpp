@@ -248,13 +248,12 @@ void ImuProcess::undistort_pcl(
 
 void ImuProcess::process(
     const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
-    PointCloudXYZI::Ptr cur_pcl_un_) {
-    double t1, t2, t3;
-    t1 = omp_get_wtime();
+    PointCloudXYZI::Ptr undistort_pointcloud) {
 
     if (meas.imu.empty()) {
         return;
-    };
+    }
+
     assert(meas.lidar != nullptr);
 
     if (imu_need_init_) {
@@ -281,8 +280,5 @@ void ImuProcess::process(
         return;
     }
 
-    undistort_pcl(meas, kf_state, *cur_pcl_un_);
-
-    t2 = omp_get_wtime();
-    t3 = omp_get_wtime();
+    undistort_pcl(meas, kf_state, *undistort_pointcloud);
 }

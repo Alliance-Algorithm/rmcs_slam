@@ -9,10 +9,35 @@ rmcs_slam:
         runtime_pos_log_enable: false
         map_file_path: "scans.pcd"
 
-        common:
-            lid_topic: "/livox/lidar"
+        # 雷达到车辆正方向Z轴高度为0的变换
+        lidar_a:
+            enable: true
+            # lidar_topic: "/livox/lidar_192_168_1_120"
+            # imu_topic: "/livox/imu_192_168_1_120"
+            lidar_topic: "/livox/lidar"
             imu_topic: "/livox/imu"
-            # ONLY turn on when external time synchronization is really not possible
+            # 位移，单位是m，浮点数
+            x: +0.09216
+            y: +0.08425
+            z: -0.2800
+            # 旋转，单位是度，浮点数
+            yaw: 40.7
+            pitch: 50.0
+            roll: 0.0
+
+        lidar_b:
+            enbale: false
+            lidar_topic: "/livox/lidar_192_168_1_156"
+            imu_topic: "/livox/imu_192_168_1_156"
+            x: -0.03300
+            y: -0.06117
+            z: -0.28000
+            yaw: -90.0
+            pitch: 50.0
+            roll: 0.0
+
+        common:
+            # only turn on when external time synchronization is really not possible
             time_sync_en: false
             # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
             # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
@@ -35,6 +60,7 @@ rmcs_slam:
             fov_degree: 360.0
             det_range: 100.0
             # true: enable the online estimation of IMU-LiDAR extrinsic
+            # 下面的数据是 mid-360 手册上 imu 芯片的外参
             extrinsic_est_en: true
             extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
             extrinsic_R: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]

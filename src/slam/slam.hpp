@@ -6,7 +6,6 @@
 
 #include <cmath>
 #include <csignal>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <omp.h>
@@ -74,9 +73,11 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
 
     // subscription
-    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr standard_subscription_;
-    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr livox_subscription_;
+
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_subscription_;
+    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr lidar_a_subscription_;
+    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr lidar_b_subscription_;
 
     // service
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_trigger_;
@@ -100,8 +101,26 @@ private:
 
     int publish_path_count_ = 0;
 
-    std::string lidar_topic_;
-    std::string imu_topic_;
+    // lidar config
+    bool enable_lidar_a_{false};
+    std::string lidar_a_topic_;
+    std::string imu_a_topic_;
+    double lidar_a_x_{0.0};
+    double lidar_a_y_{0.0};
+    double lidar_a_z_{0.0};
+    double lidar_a_yaw_{0.0};
+    double lidar_a_pitch_{0.0};
+    double lidar_a_roll{0.0};
+
+    bool enable_lidar_b_{false};
+    std::string lidar_b_topic_;
+    std::string imu_b_topic_;
+    double lidar_b_x_{0.0};
+    double lidar_b_y_{0.0};
+    double lidar_b_z_{0.0};
+    double lidar_b_yaw_{0.0};
+    double lidar_b_pitch_{0.0};
+    double lidar_b_roll{0.0};
 
     nav_msgs::msg::Path path_;
     nav_msgs::msg::Odometry odom_after_mapped_;
@@ -111,9 +130,10 @@ private:
     void map_save_callback(
         const std_srvs::srv::Trigger::Request::ConstSharedPtr& req,
         const std_srvs::srv::Trigger::Response::SharedPtr& res);
-    void standard_subscription_callback(const sensor_msgs::msg::PointCloud2::UniquePtr& msg);
-    void livox_subscription_callback(const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg);
     void imu_subscription_callback(const sensor_msgs::msg::Imu::UniquePtr& msg_in);
+    void lidar_a_subscription_callback(const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg);
+    void lidar_b_subscription_callback(const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg);
+    void standard_subscription_callback(const sensor_msgs::msg::PointCloud2::UniquePtr& msg);
 
     void map_publish_timer_callback();
 
@@ -158,10 +178,10 @@ private:
 
     double epsi_[23] = {0.001};
 
-    int kdtree_size_st_      = 0;
-    int kdtree_size_end_     = 0;
-    int add_point_size_      = 0;
-    int kdtree_delete_count_ = 0;
+    std::size_t kdtree_size_st_      = 0;
+    std::size_t kdtree_size_end_     = 0;
+    std::size_t add_point_size_      = 0;
+    std::size_t kdtree_delete_count_ = 0;
 
     float res_last_[100000];
     float det_range_               = 300.0f;
@@ -204,14 +224,14 @@ private:
     int pcd_save_interval_        = -1;
     int pcd_index_                = 0;
 
-    vector<vector<int>> point_search_ind_surf_;
-    vector<BoxPointType> cub_needrm_;
-    vector<PointVector> nearest_points_;
-    vector<double> extrinT_;
-    vector<double> extrinR_;
-    deque<double> time_buffer_;
-    deque<PointCloudXYZI::Ptr> lidar_buffer_;
-    deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
+    std::vector<std::vector<int>> point_search_ind_surf_;
+    std::vector<BoxPointType> cub_needrm_;
+    std::vector<PointVector> nearest_points_;
+    std::vector<double> extrinT_;
+    std::vector<double> extrinR_;
+    std::deque<double> time_buffer_;
+    std::deque<PointCloudXYZI::Ptr> lidar_buffer_;
+    std::deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer_;
 
     PointCloudXYZI::Ptr feats_from_map_;
     PointCloudXYZI::Ptr feats_undistort_;
@@ -247,11 +267,6 @@ private:
     std::shared_ptr<ImuProcess> imu_process_;
 
     // log
-    FILE* file_;
-    ofstream fout_pre_;
-    ofstream fout_out_;
-    ofstream fout_dbg_;
-
     double kdtree_incremental_time_ = 0.0;
     double kdtree_search_time_      = 0.0;
     double kdtree_delete_time_      = 0.0;
@@ -318,4 +333,17 @@ private:
     }
 
     void hello_world();
+
+    template <typename... Args>
+    void rclcpp_info(Args... args) {
+        RCLCPP_INFO(get_logger(), std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void rclcpp_warn(Args... args) {
+        RCLCPP_WARN(get_logger(), std::forward<Args>(args)...);
+    }
+    template <typename... Args>
+    void rclcpp_error(Args... args) {
+        RCLCPP_ERROR(get_logger(), std::forward<Args>(args)...);
+    }
 };

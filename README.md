@@ -6,7 +6,7 @@
 
 #### Environment
 
-- `ubuntu-server` 22.04.4
+- any `linux`
 - `ros:humble` in docker
 - livox mid-360 lidar
 
@@ -14,24 +14,28 @@
 
 1. you can **manually** download all dependencies
 
-- livox-ros-driver2
+- livox-sdk
 
-    [how to install](https://github.com/Livox-SDK/livox_ros_driver2)
-    ```json
-    "ip": "192.168.1.156"
-    "ip": "192.168.1.120"
+    ```sh
+    git clone https://github.com/Livox-SDK/Livox-SDK2.git
+    cd Livox-SDK2
+    mkdir build && cd build
+    cmake .. && make -j12
+    sudo make install
     ```
-    ```py
-    # 0-Pointcloud2(PointXYZRTL), 1-customized pointcloud format
-    xfer_format = 1
-    # frequency of publish, 5.0, 10.0, 20.0, 50.0, etc.
-    publish_freq = 50.0 
+
+- livox-ros-driver2
+    ```sh
+    # entry your workspace
+    git clone https://github.com/Alliance-Algorithm/livox_ros_driver2.git src/livox_ros_driver2
+    # then build it
+    colcon build --packages-select livox_ros_driver2
     ```
 
 - pcl
 
     ```sh
-    sudo apt-get install ros-humble-pcl-conversions
+    sudo apt-get install -y ros-humble-pcl-conversions ros-humble-pcl-ros libpcl-ros-dev libpcl-dev
     ```
 
 - eigen
@@ -39,6 +43,7 @@
     ```sh
     sudo apt-get install libeigen3-dev
     ```
+
 2. or you can use one-click dependency installation of ros2
 
     ```sh
