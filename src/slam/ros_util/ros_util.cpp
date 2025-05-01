@@ -11,24 +11,14 @@ struct RosUtil::Impl {
     using ImuMsg   = sensor_msgs::msg::Imu;
 
     // publisher
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_registered_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_registered_world_publisher;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_registered_body_publisher;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_effected_publisher;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr laser_map_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_effected_world_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr constructed_map_publisher;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_publisher;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odometry_publisher;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher;
-
-    // subscription
-    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr lidar_a_subscription;
-    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr lidar_b_subscription;
-    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_a_subscription;
-    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_b_subscription;
-
-    std::function<void(const std::unique_ptr<LidarMsg>&)> lidar_a_subscription_callback;
-    std::function<void(const std::unique_ptr<LidarMsg>&)> lidar_b_subscription_callback;
-    std::function<void(const std::unique_ptr<ImuMsg>&)> imu_a_subscription_callback;
-    std::function<void(const std::unique_ptr<ImuMsg>&)> imu_b_subscription_callback;
+    rclcpp::Publisher<livox_ros_driver2::msg::CustomMsg>::SharedPtr transfromed_livox_publisher;
 
     // service
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_trigger;
@@ -41,44 +31,31 @@ struct RosUtil::Impl {
     rclcpp::TimerBase::SharedPtr main_process_timer;
     rclcpp::TimerBase::SharedPtr map_publisher_timer;
 
-    struct LidarContext {
-        bool enable;
-        std::string topic_lidar;
-        std::string topic_imu;
-    } lidar_a, lidar_b;
-
     void initialize(rclcpp::Node& node) {
-
-        node.get_parameter_or("lidar_a.enable", lidar_a.enable, false);
-        node.get_parameter_or<std::string>("lidar_a.lidar_topic", lidar_a.topic_lidar, "");
-        node.get_parameter_or<std::string>("lidar_a.imu_topic", lidar_a.topic_imu, "");
-
-        node.get_parameter_or("lidar_b.enable", lidar_b.enable, false);
-        node.get_parameter_or<std::string>("lidar_b.lidar_topic", lidar_b.topic_lidar, "");
-        node.get_parameter_or<std::string>("lidar_b.imu_topic", lidar_b.topic_imu, "");
-
-        if (!lidar_a.enable && !lidar_b.enable)
-            throw std::runtime_error{"at least one lidar was enabled"};
 
         const auto sensor_qos = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
 
-        if (lidar_a.enable) {
-            lidar_a_subscription = node.create_subscription<LidarMsg>(
-                lidar_a.topic_lidar, sensor_qos, [this](const std::unique_ptr<LidarMsg>& msg) {
-                    lidar_a_subscription_callback(msg);
-                });
+        cloud_registered_world_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
+            topic::pointcloud_registerd_world, sensor_qos);
 
-            imu_a_subscription = node.create_subscription<ImuMsg>(
-                lidar_a.topic_imu, sensor_qos,
-                [this](const std::unique_ptr<ImuMsg>& msg) { imu_a_subscription_callback(msg); });
-        }
+        cloud_registered_body_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
+            topic::pointcloud_registerd_body, sensor_qos);
 
-        if (lidar_b.enable) {
-            lidar_b_subscription = node.create_subscription<LidarMsg>(
-                lidar_b.topic_lidar, sensor_qos, [](const std::unique_ptr<LidarMsg>& msg) {});
-            imu_a_subscription = node.create_subscription<ImuMsg>(
-                lidar_b.topic_imu, sensor_qos, [](const std::unique_ptr<ImuMsg>& msg) {});
-        }
+        cloud_effected_world_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
+            topic::pointcloud_effected_world, sensor_qos);
+
+        constructed_map_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
+            topic::constructed_map, sensor_qos);
+
+        pose_publisher =
+            node.create_publisher<geometry_msgs::msg::PoseStamped>(topic::pose, sensor_qos);
+
+        odometry_publisher =
+            node.create_publisher<nav_msgs::msg::Odometry>(topic::odometry, sensor_qos);
+
+        path_publisher = node.create_publisher<nav_msgs::msg::Path>(topic::path, sensor_qos);
+
+        tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(node);
     }
 };
 
@@ -86,3 +63,39 @@ RosUtil::RosUtil()
     : pimpl(std::make_unique<Impl>()) {}
 
 RosUtil::~RosUtil() = default;
+
+void RosUtil::initialize(rclcpp::Node& node) { //
+    pimpl->initialize(node);
+}
+
+void RosUtil::publish_pointcloud_registerd_world(const sensor_msgs::msg::PointCloud2& msg) const {
+    pimpl->cloud_registered_world_publisher->publish(msg);
+}
+
+void RosUtil::publish_pointcloud_registerd_body(const sensor_msgs::msg::PointCloud2& msg) const {
+    pimpl->cloud_registered_body_publisher->publish(msg);
+}
+
+void RosUtil::publish_pointcloud_effect_world(const sensor_msgs::msg::PointCloud2& msg) const {
+    pimpl->cloud_effected_world_publisher->publish(msg);
+}
+
+void RosUtil::publish_constructed_map(const sensor_msgs::msg::PointCloud2& msg) const {
+    pimpl->constructed_map_publisher->publish(msg);
+}
+
+void RosUtil::publish_pose(const geometry_msgs::msg::PoseStamped& msg) const {
+    pimpl->pose_publisher->publish(msg);
+}
+
+void RosUtil::publish_odometry(const nav_msgs::msg::Odometry& msg) const {
+    pimpl->odometry_publisher->publish(msg);
+}
+
+void RosUtil::publish_path(const nav_msgs::msg::Path& msg) const {
+    pimpl->path_publisher->publish(msg);
+}
+
+void RosUtil::update_transform(const geometry_msgs::msg::TransformStamped& stamp) const {
+    pimpl->tf_broadcaster->sendTransform(stamp);
+}

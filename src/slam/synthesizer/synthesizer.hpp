@@ -23,16 +23,9 @@ public:
 
     void initialize(rclcpp::Node& node);
 
-    void set_main_transform(
-        const Eigen::Quaterniond& rotation, const Eigen::Translation3d& translation);
-    void set_auxiliary_transform(
-        const Eigen::Quaterniond& rotation, const Eigen::Translation3d& translation);
-
-    void upload_main_pointcloud(const std::unique_ptr<LivoxMsg>& msg);
-    void upload_main_imu(const std::unique_ptr<ImuMsg>& msg);
-
-    void upload_auxiliary_pointcloud(const std::unique_ptr<LivoxMsg>& msg);
-    void upload_auxiliary_imu(const std::unique_ptr<ImuMsg>& msg);
+    void register_callback(
+        const std::function<void(const std::unique_ptr<LivoxMsg>&)>& livox_callback,
+        const std::function<void(const std::unique_ptr<ImuMsg>&)>& imu_callback);
 
 private:
     struct Impl;

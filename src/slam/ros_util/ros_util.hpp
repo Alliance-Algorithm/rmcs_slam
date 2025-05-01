@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/pimpl.hpp"
+#include "../util/pimpl.hpp"
 
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/subscription.hpp>
@@ -16,23 +16,34 @@ namespace rmcs {
 class RosUtil {
     RMCS_PIMPL_DEFINTION(RosUtil)
 
+    struct topic {
+        static constexpr auto pointcloud_registerd_world = "/rmcs_slam/cloud_registered_world";
+        static constexpr auto pointcloud_registerd_body  = "/rmcs_slam/cloud_registered_body";
+        static constexpr auto pointcloud_effected_world  = "/rmcs_slam/cloud_effected";
+        static constexpr auto constructed_map            = "/rmcs_slam/constructed_map";
+        static constexpr auto pose                       = "/rmcs_slam/pose";
+        static constexpr auto odometry                   = "/rmcs_slam/odometry";
+        static constexpr auto path                       = "/rmcs_slam/path";
+    };
+
 public:
-    void publish_frame_world(
-        const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
+    void initialize(rclcpp::Node& node);
 
-    void publish_frame_body(
-        const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
+    void publish_pointcloud_registerd_world(const sensor_msgs::msg::PointCloud2& msg) const;
 
-    void publish_effect_world(
-        const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
+    void publish_pointcloud_registerd_body(const sensor_msgs::msg::PointCloud2& msg) const;
 
-    void publish_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& publisher);
+    void publish_pointcloud_effect_world(const sensor_msgs::msg::PointCloud2& msg) const;
 
-    void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr& publisher);
+    void publish_constructed_map(const sensor_msgs::msg::PointCloud2& msg) const;
 
-    void publish_odometry(
-        const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr& publisher,
-        const std::unique_ptr<tf2_ros::TransformBroadcaster>& broadcaster);
+    void publish_pose(const geometry_msgs::msg::PoseStamped& msg) const;
+
+    void publish_odometry(const nav_msgs::msg::Odometry& msg) const;
+
+    void publish_path(const nav_msgs::msg::Path& msg) const;
+
+    void update_transform(const geometry_msgs::msg::TransformStamped& stamp) const;
 };
 
 } // namespace rmcs
