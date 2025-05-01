@@ -29,6 +29,10 @@ class RosUtil {
 public:
     void initialize(rclcpp::Node& node);
 
+    void stop_service();
+
+    void start_service();
+
     void publish_pointcloud_registerd_world(const sensor_msgs::msg::PointCloud2& msg) const;
 
     void publish_pointcloud_registerd_body(const sensor_msgs::msg::PointCloud2& msg) const;
@@ -44,6 +48,14 @@ public:
     void publish_path(const nav_msgs::msg::Path& msg) const;
 
     void update_transform(const geometry_msgs::msg::TransformStamped& stamp) const;
+
+    void register_map_save_function(const std::function<void(void)>& fun);
+
+    void register_reset_function(const std::function<void(void)>& fun);
+
+    void register_update_function(const std::function<void(void)>& fun);
+
+    void register_publish_map_function(const std::function<void(void)>& fun);
 };
 
 } // namespace rmcs

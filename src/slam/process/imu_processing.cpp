@@ -1,5 +1,9 @@
 #include "imu_processing.hpp"
 
+#include <memory>
+
+#include <memory>
+
 ImuProcess::ImuProcess()
     : b_first_frame_(true)
     , imu_need_init_(true)
@@ -15,10 +19,10 @@ ImuProcess::ImuProcess()
     angvel_last     = Zero3d;
     Lidar_T_wrt_IMU = Zero3d;
     Lidar_R_wrt_IMU = Eye3d;
-    last_imu_.reset(new sensor_msgs::msg::Imu());
+    last_imu_       = std::make_shared<sensor_msgs::msg::Imu>();
 }
 
-ImuProcess::~ImuProcess() {}
+ImuProcess::~ImuProcess() = default;
 
 void ImuProcess::reset() {
     // ROS_WARN("Reset ImuProcess");
@@ -30,8 +34,8 @@ void ImuProcess::reset() {
     init_iter_num    = 1;
     v_imu_.clear();
     pose_imu_.clear();
-    last_imu_.reset(new sensor_msgs::msg::Imu());
-    cur_pcl_un_.reset(new PointCloudXYZI());
+    last_imu_   = std::make_shared<sensor_msgs::msg::Imu>();
+    cur_pcl_un_ = std::make_shared<PointCloudXYZI>();
 }
 
 void ImuProcess::set_extrinsic(const MD(4, 4) & T) {

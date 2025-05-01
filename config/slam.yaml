@@ -1,31 +1,27 @@
 rmcs_slam:
     ros__parameters:
-        feature_extract_enable: false
-        point_filter_num: 3
         max_iteration: 3
         filter_size_surf: 0.5
         filter_size_map: 0.5
         cube_side_length: 1000.0
-        runtime_pos_log_enable: false
         map_file_path: "scans.pcd"
 
-        # 雷达到车辆正方向Z轴高度为0的变换
-        lidar_a:
+        primary_lidar:
             enable: true
-            # lidar_topic: "/livox/lidar_192_168_1_120"
-            # imu_topic: "/livox/imu_192_168_1_120"
             lidar_topic: "/livox/lidar"
             imu_topic: "/livox/imu"
-            # 位移，单位是m，浮点数
-            x: +0.09216
-            y: +0.08425
-            z: -0.2800
-            # 旋转，单位是度，浮点数
-            yaw: 40.7
-            pitch: 50.0
+            # 雷达原点在底盘坐标系的坐标
+            # 单位是m，浮点数
+            x: +0.0
+            y: +0.0
+            z: +0.6
+            # 描述了雷达坐标系如何旋转到底盘坐标系
+            # 单位是度，浮点数
+            yaw: 0.0
+            pitch: 180.0
             roll: 0.0
 
-        lidar_b:
+        secondary_lidar:
             enbale: false
             lidar_topic: "/livox/lidar_192_168_1_156"
             imu_topic: "/livox/imu_192_168_1_156"
@@ -38,11 +34,10 @@ rmcs_slam:
 
         common:
             # only turn on when external time synchronization is really not possible
-            time_sync_en: false
+            enable_timestamp_sync: false
             # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
             # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
             time_offset_lidar_to_imu: 0.0
-            pointcloud2: false
 
         preprocess:
             # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for any other pointcloud input
@@ -51,6 +46,8 @@ rmcs_slam:
             blind: 0.5
             timestamp_unit: 3
             scan_rate: 10
+            point_filter_num: 3
+            feature_extract_enable: false
 
         mapping:
             acc_cov: 0.1
@@ -58,29 +55,23 @@ rmcs_slam:
             b_acc_cov: 0.0001
             b_gyr_cov: 0.0001
             fov_degree: 360.0
-            det_range: 100.0
+            lidar_detection_distance: 100.0
             # true: enable the online estimation of IMU-LiDAR extrinsic
-            # 下面的数据是 mid-360 手册上 imu 芯片的外参
             extrinsic_est_en: true
-            extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
-            extrinsic_R: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]
+            # 下面的数据是 mid-360 手册上 imu 芯片的外参
+            extrinsic_translation: [ -0.011, -0.02329, 0.04412 ]
+            extrinsic_orientation: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]
 
         publish:
-            # true: publish Path
-            path_en: true
-            # true: publish Effects
-            effect_map_en: true
-            # true: publish Map cloud
-            map_en: true
-            # false: close all the point cloud output
-            scan_publish_en: true
-            # false: low down the points number in a global-frame point clouds scan.
-            dense_publish_en: true
-            # true: output the point cloud scans in IMU-body-frame
-            scan_bodyframe_pub_en: true
-
-        pcd_save:
-            pcd_save_en: false
-            # how many LiDAR frames saved in each pcd file;
-            # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
-            interval: -1
+            # 所有扫描点云的开关
+            pointcloud_all: true
+            # 是否对世界系点云进行降采样，false 为进行
+            pointcloud_dense: true
+            # 发布影响到地图的点云帧
+            pointcloud_effect_world: true
+            # 发布 IMU 系的点云帧
+            pointcloud_imu: true
+            # 发布机器人的路径
+            path: true
+            # 发布构建好的地图，1Hz的频率
+            constructed_map: true

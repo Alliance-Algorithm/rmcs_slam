@@ -7,8 +7,8 @@
 
 #define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
 
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloudXYZI;
+typedef pcl::PointXYZINormal PointT;
+typedef pcl::PointCloud<PointT> PointCloudXYZI;
 
 enum LID_TYPE { AVIA = 1, VELO16, OUST64, MID360 }; //{1, 2, 3}
 enum TIME_UNIT { SEC = 0, MS = 1, US = 2, NS = 3 };

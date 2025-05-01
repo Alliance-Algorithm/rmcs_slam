@@ -16,48 +16,48 @@
 
 #define USE_IKFOM
 
-#define PI_M (3.14159265358)
-#define G_m_s2 (9.81) // Gravaty const in GuangDong/China
-#define DIM_STATE (18) // Dimension of states (Let Dim(SO(3)) = 3)
-#define DIM_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
-#define CUBE_LEN (6.0)
-#define LIDAR_SP_LEN (2)
-#define INIT_COV (1)
+#define PI_M             (3.14159265358)
+#define G_m_s2           (9.81) // Gravaty const in GuangDong/China
+#define DIM_STATE        (18)   // Dimension of states (Let Dim(SO(3)) = 3)
+#define DIM_PROC_N       (12)   // Dimension of process noise (Let Dim(SO(3)) = 3)
+#define CUBE_LEN         (6.0)
+#define LIDAR_SP_LEN     (2)
+#define INIT_COV         (1)
 #define NUM_MATCH_POINTS (5)
-#define MAX_MEAS_DIM (10000)
+#define MAX_MEAS_DIM     (10000)
 
-#define VEC_FROM_ARRAY(v) v[0], (v)[1], (v)[2]
-#define MAT_FROM_ARRAY(v) v[0], (v)[1], (v)[2], (v)[3], (v)[4], (v)[5], (v)[6], (v)[7], (v)[8]
+#define VEC_FROM_ARRAY(v)      v[0], (v)[1], (v)[2]
+#define MAT_FROM_ARRAY(v)      v[0], (v)[1], (v)[2], (v)[3], (v)[4], (v)[5], (v)[6], (v)[7], (v)[8]
 #define CONSTRAIN(v, min, max) (((v) > (min)) ? (((v) < (max)) ? (v) : (max)) : (min))
-#define ARRAY_FROM_EIGEN(mat) mat.data(), (mat).data() + (mat).rows() * (mat).cols()
-#define STD_VEC_FROM_EIGEN(mat) std::vector<decltype(mat)::Scalar>((mat).data(), (mat).data() + (mat).rows() * (mat).cols())
+#define ARRAY_FROM_EIGEN(mat)  mat.data(), (mat).data() + (mat).rows() * (mat).cols()
+#define STD_VEC_FROM_EIGEN(mat) \
+    std::vector<decltype(mat)::Scalar>((mat).data(), (mat).data() + (mat).rows() * (mat).cols())
 #define DEBUG_FILE_DIR(name) (std::string(std::string(ROOT_DIR) + "log/" + (name)))
 
 typedef rmcs_slam::msg::Pose6D Pose6D;
-typedef pcl::PointXYZINormal PointType;
-typedef pcl::PointCloud<PointType> PointCloudXYZI;
-typedef std::vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
+typedef pcl::PointXYZINormal PointT;
+typedef pcl::PointCloud<PointT> PointCloudXYZI;
+typedef std::vector<PointT, Eigen::aligned_allocator<PointT>> PointVector;
 typedef Eigen::Vector3d V3D;
 typedef Eigen::Matrix3d M3D;
 typedef Eigen::Vector3f V3F;
 typedef Eigen::Matrix3f M3F;
 
 #define MD(a, b) Eigen::Matrix<double, (a), (b)>
-#define VD(a) Eigen::Matrix<double, (a), 1>
+#define VD(a)    Eigen::Matrix<double, (a), 1>
 #define MF(a, b) Eigen::Matrix<float, (a), (b)>
-#define VF(a) Eigen::Matrix<float, (a), 1>
+#define VF(a)    Eigen::Matrix<float, (a), 1>
 
 inline M3D Eye3d(M3D::Identity());
 inline M3F Eye3f(M3F::Identity());
 inline V3D Zero3d(0, 0, 0);
 inline V3F Zero3f(0, 0, 0);
 
-struct MeasureGroup // Lidar data and imu dates for the curent process
+struct MeasureGroup             // Lidar data and imu dates for the curent process
 {
-    MeasureGroup()
-    {
+    MeasureGroup() {
         lidar_beg_time = 0.0;
-        this->lidar = std::make_shared<PointCloudXYZI>();
+        this->lidar    = std::make_shared<PointCloudXYZI>();
     };
 
     double lidar_beg_time;
@@ -67,56 +67,51 @@ struct MeasureGroup // Lidar data and imu dates for the curent process
 };
 
 struct StatesGroup {
-    StatesGroup()
-    {
-        this->rot_end = M3D::Identity();
-        this->pos_end = Zero3d;
-        this->vel_end = Zero3d;
-        this->bias_g = Zero3d;
-        this->bias_a = Zero3d;
-        this->gravity = Zero3d;
-        this->cov = MD(DIM_STATE, DIM_STATE)::Identity() * INIT_COV;
+    StatesGroup() {
+        this->rot_end               = M3D::Identity();
+        this->pos_end               = Zero3d;
+        this->vel_end               = Zero3d;
+        this->bias_g                = Zero3d;
+        this->bias_a                = Zero3d;
+        this->gravity               = Zero3d;
+        this->cov                   = MD(DIM_STATE, DIM_STATE)::Identity() * INIT_COV;
         this->cov.block<9, 9>(9, 9) = MD(9, 9)::Identity() * 0.00001;
     };
 
-    StatesGroup(const StatesGroup& b)
-    {
+    StatesGroup(const StatesGroup& b) {
         this->rot_end = b.rot_end;
         this->pos_end = b.pos_end;
         this->vel_end = b.vel_end;
-        this->bias_g = b.bias_g;
-        this->bias_a = b.bias_a;
+        this->bias_g  = b.bias_g;
+        this->bias_a  = b.bias_a;
         this->gravity = b.gravity;
-        this->cov = b.cov;
+        this->cov     = b.cov;
     };
 
-    StatesGroup& operator=(const StatesGroup& b)
-    {
+    StatesGroup& operator=(const StatesGroup& b) {
         this->rot_end = b.rot_end;
         this->pos_end = b.pos_end;
         this->vel_end = b.vel_end;
-        this->bias_g = b.bias_g;
-        this->bias_a = b.bias_a;
+        this->bias_g  = b.bias_g;
+        this->bias_a  = b.bias_a;
         this->gravity = b.gravity;
-        this->cov = b.cov;
+        this->cov     = b.cov;
         return *this;
     };
 
-    StatesGroup operator+(const Eigen::Matrix<double, DIM_STATE, 1>& state_add)
-    {
+    StatesGroup operator+(const Eigen::Matrix<double, DIM_STATE, 1>& state_add) {
         StatesGroup a;
         a.rot_end = this->rot_end * Exp(state_add(0, 0), state_add(1, 0), state_add(2, 0));
         a.pos_end = this->pos_end + state_add.block<3, 1>(3, 0);
         a.vel_end = this->vel_end + state_add.block<3, 1>(6, 0);
-        a.bias_g = this->bias_g + state_add.block<3, 1>(9, 0);
-        a.bias_a = this->bias_a + state_add.block<3, 1>(12, 0);
+        a.bias_g  = this->bias_g + state_add.block<3, 1>(9, 0);
+        a.bias_a  = this->bias_a + state_add.block<3, 1>(12, 0);
         a.gravity = this->gravity + state_add.block<3, 1>(15, 0);
-        a.cov = this->cov;
+        a.cov     = this->cov;
         return a;
     };
 
-    StatesGroup& operator+=(const Eigen::Matrix<double, DIM_STATE, 1>& state_add)
-    {
+    StatesGroup& operator+=(const Eigen::Matrix<double, DIM_STATE, 1>& state_add) {
         this->rot_end = this->rot_end * Exp(state_add(0, 0), state_add(1, 0), state_add(2, 0));
         this->pos_end += state_add.block<3, 1>(3, 0);
         this->vel_end += state_add.block<3, 1>(6, 0);
@@ -126,21 +121,19 @@ struct StatesGroup {
         return *this;
     };
 
-    Eigen::Matrix<double, DIM_STATE, 1> operator-(const StatesGroup& b)
-    {
+    Eigen::Matrix<double, DIM_STATE, 1> operator-(const StatesGroup& b) {
         Eigen::Matrix<double, DIM_STATE, 1> a;
         M3D rotd(b.rot_end.transpose() * this->rot_end);
-        a.block<3, 1>(0, 0) = Log(rotd);
-        a.block<3, 1>(3, 0) = this->pos_end - b.pos_end;
-        a.block<3, 1>(6, 0) = this->vel_end - b.vel_end;
-        a.block<3, 1>(9, 0) = this->bias_g - b.bias_g;
+        a.block<3, 1>(0, 0)  = Log(rotd);
+        a.block<3, 1>(3, 0)  = this->pos_end - b.pos_end;
+        a.block<3, 1>(6, 0)  = this->vel_end - b.vel_end;
+        a.block<3, 1>(9, 0)  = this->bias_g - b.bias_g;
         a.block<3, 1>(12, 0) = this->bias_a - b.bias_a;
         a.block<3, 1>(15, 0) = this->gravity - b.gravity;
         return a;
     };
 
-    void resetpose()
-    {
+    void resetpose() {
         this->rot_end = M3D::Identity();
         this->pos_end = Zero3d;
         this->vel_end = Zero3d;
@@ -149,29 +142,27 @@ struct StatesGroup {
     M3D rot_end; // the estimated attitude (rotation matrix) at the end lidar point
     V3D pos_end; // the estimated position at the end lidar point (world frame)
     V3D vel_end; // the estimated velocity at the end lidar point (world frame)
-    V3D bias_g; // gyroscope bias
-    V3D bias_a; // accelerator bias
+    V3D bias_g;  // gyroscope bias
+    V3D bias_a;  // accelerator bias
     V3D gravity; // the estimated gravity acceleration
     Eigen::Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
 };
 
 template <typename T>
-inline T rad2deg(T radians)
-{
+inline T rad2deg(T radians) {
     return radians * 180.0 / PI_M;
 }
 
 template <typename T>
-inline T deg2rad(T degrees)
-{
+inline T deg2rad(T degrees) {
     return degrees * PI_M / 180.0;
 }
 
 template <typename T>
 inline auto set_pose6d(
-    const double t, const Eigen::Matrix<T, 3, 1>& a, const Eigen::Matrix<T, 3, 1>& g, const Eigen::Matrix<T, 3, 1>& v,
-    const Eigen::Matrix<T, 3, 1>& p, const Eigen::Matrix<T, 3, 3>& R)
-{
+    const double t, const Eigen::Matrix<T, 3, 1>& a, const Eigen::Matrix<T, 3, 1>& g,
+    const Eigen::Matrix<T, 3, 1>& v, const Eigen::Matrix<T, 3, 1>& p,
+    const Eigen::Matrix<T, 3, 3>& R) {
     Pose6D rot_kp;
     rot_kp.offset_time = t;
     for (int i = 0; i < 3; i++) {
@@ -194,8 +185,8 @@ normvec:  normalized x0
 */
 template <typename T>
 inline bool esti_normvector(
-    Eigen::Matrix<T, 3, 1>& normvec, const PointVector& point, const T& threshold, const int& point_num)
-{
+    Eigen::Matrix<T, 3, 1>& normvec, const PointVector& point, const T& threshold,
+    const int& point_num) {
     Eigen::MatrixXf A(point_num, 3);
     Eigen::MatrixXf b(point_num, 1);
     b.setOnes();
@@ -219,16 +210,15 @@ inline bool esti_normvector(
     return true;
 }
 
-inline float calc_dist(PointType p1, PointType p2)
-{
+inline float calc_dist(PointT p1, PointT p2) {
     float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
-        + (p1.z - p2.z) * (p1.z - p2.z);
+            + (p1.z - p2.z) * (p1.z - p2.z);
     return d;
 }
 
 template <typename T>
-inline bool esti_plane(Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& point, const T& threshold)
-{
+inline bool
+    esti_plane(Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& point, const T& threshold) {
     Eigen::Matrix<T, NUM_MATCH_POINTS, 3> A;
     Eigen::Matrix<T, NUM_MATCH_POINTS, 1> b;
     A.setZero();
@@ -243,7 +233,7 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& po
 
     Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
 
-    T n = normvec.norm();
+    T n           = normvec.norm();
     pca_result(0) = normvec(0) / n;
     pca_result(1) = normvec(1) / n;
     pca_result(2) = normvec(2) / n;
@@ -260,15 +250,13 @@ inline bool esti_plane(Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& po
     return true;
 }
 
-inline double get_time_sec(const builtin_interfaces::msg::Time& time)
-{
+inline double get_time_sec(const builtin_interfaces::msg::Time& time) {
     return rclcpp::Time(time).seconds();
 }
 
-inline rclcpp::Time get_ros_time(double timestamp)
-{
-    int32_t sec = std::floor(timestamp);
+inline rclcpp::Time get_ros_time(double timestamp) {
+    int32_t sec    = std::floor(timestamp);
     auto nanosec_d = (timestamp - std::floor(timestamp)) * 1e9;
-    auto nanosec = static_cast<uint32_t>(nanosec_d);
-    return { sec, nanosec };
+    auto nanosec   = static_cast<uint32_t>(nanosec_d);
+    return {sec, nanosec};
 }

@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -fexceptions")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE "Release")
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
 
@@ -76,8 +76,9 @@ find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io)
 
-include_directories(src/slam)
-include_directories(src/obstacle)
+include_directories(src/)
+include_directories(src/slam/)
+include_directories(src/obstacle/)
 
 rosidl_generate_interfaces(
     ${PROJECT_NAME}
@@ -132,7 +133,7 @@ target_link_libraries(
 
 # Install
 install(
-  TARGETS slam obstacle
+  TARGETS slam
   DESTINATION lib/${PROJECT_NAME}
 )
 

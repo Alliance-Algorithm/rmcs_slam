@@ -1,7 +1,5 @@
 #include "slam.hpp"
 
-#include <omp.h>
-
 #include "common/common_lib.hpp"
 #include "common/use_ikfom.hpp"
 #include "ikd_tree/ikd_tree.hpp"
@@ -28,11 +26,12 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #include <Eigen/Core>
-
-#define INIT_TIME       (0.1)
-#define LASER_POINT_COV (0.001)
+#include <omp.h>
 
 using namespace rmcs;
+
+static constexpr auto initialize_interval = 0.1;
+static constexpr auto lidar_point_cov     = 0.001;
 
 static std::mutex global_mutex;
 static std::condition_variable global_signal;
@@ -53,14 +52,17 @@ public:
 struct SLAM::Impl {
 
     void initialize(rclcpp::Node& node) {
-        std::signal(SIGINT, signal_callback);
+        std::signal(SIGINT, [](int) {
+            global_signal.notify_all();
+            rclcpp::shutdown();
+        });
 
         logger = std::make_shared<rclcpp::Logger>(rclcpp::get_logger("rmcs-slam"));
 
         ros_utility.initialize(node);
         rclcpp_info("finish initializing ros utility");
 
-        load_parameter(node);
+        load_parameter_from_config(node);
         rclcpp_info("read parameters from yaml successfully");
 
         synthesizer.initialize(node);
@@ -70,26 +72,13 @@ struct SLAM::Impl {
         rclcpp_info("finish initializing synthesizer");
 
         using namespace std::chrono_literals;
-        update_timer = node.create_wall_timer(10ms, [this] { update(); });
-        publish_constructed_map_timer =
-            node.create_wall_timer(1s, [this] { publish_constructed_map_timer_callback(); });
-
-        using Request  = std_srvs::srv::Trigger::Request::ConstSharedPtr;
-        using Response = std_srvs::srv::Trigger::Response::SharedPtr;
-
-        map_save_trigger = node.create_service<std_srvs::srv::Trigger>(
-            "/rmcs_slam/map_save", [this, &node](const Request& p1, const Response& p2) {
-                rclcpp_info("service arrived: /rmcs_slam/map_save");
-                map_save_callback(p1, p2);
-            });
-
-        reset_trigger = node.create_service<std_srvs::srv::Trigger>(
-            "/rmcs_slam/reset", [this, &node](const Request& p1, const Response& p2) {
-                rclcpp_info("service arrived: /rmcs_slam/reset");
-                reset_trigger_callback(node);
-                p2->message = "reset now";
-                p2->success = true;
-            });
+        ros_utility.register_update_function([this] { update(); });
+        ros_utility.register_publish_map_function([this] {
+            if (enable_publish_constructed_map)
+                publish_constructed_map();
+        });
+        ros_utility.register_map_save_function([this] { save_to_pcd(); });
+        ros_utility.register_reset_function([&, this] { reset_slam(node); });
 
         current_path.header.stamp    = node.get_clock()->now();
         current_path.header.frame_id = "lidar_init";
@@ -105,6 +94,14 @@ struct SLAM::Impl {
 
         std::memset(points_selected_surf.data(), true, sizeof(points_selected_surf));
         std::memset(residual_last.data(), -1000.0f, sizeof(residual_last));
+
+        pointcloud_origin_undistort         = std::make_shared<PointCloudXYZI>();
+        pointcloud_downsample_undistort_imu = std::make_shared<PointCloudXYZI>();
+        pointcloud_downsample_world         = std::make_shared<PointCloudXYZI>();
+        constructed_map_pointcloud          = std::make_shared<PointCloudXYZI>();
+        normal_vector                       = std::make_shared<PointCloudXYZI>(100000, 1);
+        origin_constructed_map              = std::make_shared<PointCloudXYZI>(100000, 1);
+        normal_vector_correspondence        = std::make_shared<PointCloudXYZI>(100000, 1);
 
         rclcpp_info("slam source initialized successfully");
 
@@ -140,35 +137,33 @@ struct SLAM::Impl {
     }
 
     void update() {
-        if (!sync_packages(current_sensor_package))
+        if (!bind_sensor_packages(current_sensor_package))
             return;
+
+        const auto& package = current_sensor_package;
 
         if (first_update) {
             imu_process->first_lidar_time = first_lidar_timetamp;
-            first_lidar_timetamp          = current_sensor_package.lidar_beg_time;
+            first_lidar_timetamp          = package.lidar_beg_time;
             first_update                  = false;
             return;
         }
 
-        // TODO: 这里可以推断出 feats_undistort 的实际含义
-
         // 使用陀螺仪进行点云的去畸变
-        imu_process->process(
-            current_sensor_package, extended_kalman_filter, pointcloud_origin_undistort);
+        imu_process->process(package, extended_kalman_filter, pointcloud_origin_undistort);
 
-        ekf_prediction_result = extended_kalman_filter.get_x();
+        current_ekf_prediction = extended_kalman_filter.get_x();
 
-        current_robot_pose = ekf_prediction_result.pos
-                           + ekf_prediction_result.rot * ekf_prediction_result.offset_T_L_I;
+        current_robot_pose = current_ekf_prediction.pos
+                           + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
 
         if (pointcloud_origin_undistort->empty() || (pointcloud_origin_undistort == nullptr)) {
             rclcpp_warn("no point, skip this scan!");
             return;
         }
 
-        ekf_initialized = (current_sensor_package.lidar_beg_time - first_lidar_timetamp) < INIT_TIME
-                            ? false
-                            : true;
+        ekf_initialized =
+            (package.lidar_beg_time - first_lidar_timetamp) < initialize_interval ? false : true;
 
         // segment the map in lidar fov
         lasermap_fov_segment();
@@ -188,9 +183,9 @@ struct SLAM::Impl {
                 ikdtree.set_downsample_param(static_cast<float>(filter_size_map_min));
                 pointcloud_downsample_world->resize(feats_downsample_size);
                 for (int i = 0; i < feats_downsample_size; i++) {
-                    point_body_to_world(
-                        &(pointcloud_downsample_undistort_imu->points[i]),
-                        &(pointcloud_downsample_world->points[i]));
+                    point_lidar_to_world(
+                        pointcloud_downsample_undistort_imu->points[i],
+                        pointcloud_downsample_world->points[i]);
                 }
 
                 ikdtree.Build(pointcloud_downsample_world->points);
@@ -207,7 +202,7 @@ struct SLAM::Impl {
         normal_vector->resize(feats_downsample_size);
         pointcloud_downsample_world->resize(feats_downsample_size);
 
-        V3D ext_euler = SO3ToEuler(ekf_prediction_result.offset_R_L_I);
+        V3D ext_euler = SO3ToEuler(current_ekf_prediction.offset_R_L_I);
 
         nearest_points.resize(feats_downsample_size);
         int rematch_num        = 0;
@@ -215,15 +210,17 @@ struct SLAM::Impl {
 
         // iterated state estimation
         double t_update_start = omp_get_wtime();
-        double solve_H_time   = 0;
-        extended_kalman_filter.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
-        ekf_prediction_result = extended_kalman_filter.get_x();
-        current_robot_pose    = ekf_prediction_result.pos
-                           + ekf_prediction_result.rot * ekf_prediction_result.offset_T_L_I;
-        current_orientation.x = ekf_prediction_result.rot.coeffs()[0];
-        current_orientation.y = ekf_prediction_result.rot.coeffs()[1];
-        current_orientation.z = ekf_prediction_result.rot.coeffs()[2];
-        current_orientation.w = ekf_prediction_result.rot.coeffs()[3];
+        double solve_h_time   = 0;
+        extended_kalman_filter.update_iterated_dyn_share_modified(lidar_point_cov, solve_h_time);
+        current_ekf_prediction = extended_kalman_filter.get_x();
+
+        current_robot_pose = current_ekf_prediction.pos
+                           + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
+
+        current_orientation.x = current_ekf_prediction.rot.coeffs()[0];
+        current_orientation.y = current_ekf_prediction.rot.coeffs()[1];
+        current_orientation.z = current_ekf_prediction.rot.coeffs()[2];
+        current_orientation.w = current_ekf_prediction.rot.coeffs()[3];
 
         double t_update_end = omp_get_wtime();
 
@@ -238,7 +235,7 @@ struct SLAM::Impl {
             publish_path();
 
         if (enable_publish_pointcloud_all) {
-            publish_pointcloud_effect_world();
+            publish_pointcloud_registerd_world();
 
             if (enable_publish_pointcloud_imu)
                 publish_pointcloud_registerd_imu();
@@ -248,88 +245,42 @@ struct SLAM::Impl {
         }
     }
 
-    template <typename T>
-    void point_body_to_world(const Eigen::Matrix<T, 3, 1>& src, Eigen::Matrix<T, 3, 1>& dst) {
-        V3D p_body(src[0], src[1], src[2]);
-        V3D p_global(
-            ekf_prediction_result.rot
-                * (ekf_prediction_result.offset_R_L_I * p_body + ekf_prediction_result.offset_T_L_I)
-            + ekf_prediction_result.pos);
-
-        dst[0] = p_global(0);
-        dst[1] = p_global(1);
-        dst[2] = p_global(2);
-    }
-
-    void sync_current_pose(auto& stamp) {
-        stamp.pose.position.x    = ekf_prediction_result.pos(0);
-        stamp.pose.position.y    = ekf_prediction_result.pos(1);
-        stamp.pose.position.z    = ekf_prediction_result.pos(2);
+    void load_current_pose_stamp(auto& stamp) {
+        stamp.pose.position.x    = current_ekf_prediction.pos(0);
+        stamp.pose.position.y    = current_ekf_prediction.pos(1);
+        stamp.pose.position.z    = current_ekf_prediction.pos(2);
         stamp.pose.orientation.x = current_orientation.x;
         stamp.pose.orientation.y = current_orientation.y;
         stamp.pose.orientation.z = current_orientation.z;
         stamp.pose.orientation.w = current_orientation.w;
     }
 
-    static void signal_callback(int signal) {
-        global_signal.notify_all();
-        rclcpp::shutdown();
+    // 从机器人系变换到世界系
+    void point_lidar_to_world(const PointT& src, PointT& dst) const {
+        const auto result = current_ekf_prediction;
+
+        auto point_body  = Eigen::Vector3d(src.x, src.y, src.z);
+        auto point_world = Eigen::Vector3d{
+            result.rot * (result.offset_R_L_I * point_body + result.offset_T_L_I) + result.pos};
+
+        dst.x = static_cast<float>(point_world(0));
+        dst.y = static_cast<float>(point_world(1));
+        dst.z = static_cast<float>(point_world(2));
+
+        dst.intensity = src.intensity;
     }
 
-    static void point_body_to_world_ikfom(
-        PointType const* const in, PointType* const out, state_ikfom& state) {
-        V3D p_body(in->x, in->y, in->z);
-        V3D p_global(state.rot * (state.offset_R_L_I * p_body + state.offset_T_L_I) + state.pos);
+    void point_lidar_to_imu(const PointT& src, PointT& dst) const {
+        const auto result = current_ekf_prediction;
 
-        out->x = static_cast<float>(p_global(0));
-        out->y = static_cast<float>(p_global(1));
-        out->z = static_cast<float>(p_global(2));
+        auto point_lidar = Eigen::Vector3d(src.x, src.y, src.z);
+        auto point_imu   = Eigen::Vector3d(result.offset_R_L_I * point_lidar + result.offset_T_L_I);
 
-        out->intensity = in->intensity;
-    }
+        dst.x = static_cast<float>(point_imu(0));
+        dst.y = static_cast<float>(point_imu(1));
+        dst.z = static_cast<float>(point_imu(2));
 
-    void point_body_to_world(PointType const* const pi, PointType* const po) {
-        V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(
-            ekf_prediction_result.rot
-                * (ekf_prediction_result.offset_R_L_I * p_body + ekf_prediction_result.offset_T_L_I)
-            + ekf_prediction_result.pos);
-
-        po->x = static_cast<float>(p_global(0));
-        po->y = static_cast<float>(p_global(1));
-        po->z = static_cast<float>(p_global(2));
-
-        po->intensity = pi->intensity;
-    }
-
-    void rgb_point_body_to_world(PointType const* const pi, PointType* const po) {
-        V3D p_body(pi->x, pi->y, pi->z);
-        V3D p_global(
-            ekf_prediction_result.rot
-                * (ekf_prediction_result.offset_R_L_I * p_body + ekf_prediction_result.offset_T_L_I)
-            + ekf_prediction_result.pos);
-
-        po->x         = static_cast<float>(p_global(0));
-        po->y         = static_cast<float>(p_global(1));
-        po->z         = static_cast<float>(p_global(2));
-        po->intensity = pi->intensity;
-    }
-
-    void rgb_point_body_lidar_to_imu(PointType const* const pi, PointType* const po) {
-        V3D p_body_lidar(pi->x, pi->y, pi->z);
-        V3D p_body_imu(
-            ekf_prediction_result.offset_R_L_I * p_body_lidar + ekf_prediction_result.offset_T_L_I);
-
-        po->x = static_cast<float>(p_body_imu(0));
-        po->y = static_cast<float>(p_body_imu(1));
-        po->z = static_cast<float>(p_body_imu(2));
-
-        po->intensity = pi->intensity;
-    }
-
-    void points_cache_collect() {
-        PointVector points_history;
-        ikdtree.acquire_removed_points(points_history);
+        dst.intensity = src.intensity;
     }
 
     void publish_pointcloud_registerd_world() {
@@ -338,9 +289,9 @@ struct SLAM::Impl {
 
         auto pointcloud_world = std::make_shared<PointCloudXYZI>(pointcloud_use->size(), 1);
 
-        for (int i = 0; i < pointcloud_use->size(); i++) {
-            rgb_point_body_to_world(&pointcloud_use->points[i], &pointcloud_world->points[i]);
-        }
+        std::size_t index{0};
+        for (auto& point : *pointcloud_world)
+            point_lidar_to_world(pointcloud_use->at(index++), point);
 
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(*pointcloud_world, msg);
@@ -354,9 +305,9 @@ struct SLAM::Impl {
         auto pointcloud_size = pointcloud_origin_undistort->points.size();
         auto pointcloud_imu  = std::make_shared<PointCloudXYZI>(pointcloud_size, 1);
 
-        for (int i = 0; i < pointcloud_size; i++)
-            rgb_point_body_lidar_to_imu(
-                &pointcloud_origin_undistort->points[i], &pointcloud_imu->points[i]);
+        std::size_t index{0};
+        for (auto& point : *pointcloud_imu)
+            point_lidar_to_imu(pointcloud_origin_undistort->at(index++), point);
 
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(*pointcloud_imu, msg);
@@ -369,35 +320,37 @@ struct SLAM::Impl {
     void publish_pointcloud_effect_world() {
         auto pointcloud_effect = std::make_shared<PointCloudXYZI>(pointcloud_effect_size, 1);
 
-        for (int i = 0; i < pointcloud_effect_size; i++)
-            rgb_point_body_to_world(
-                &origin_constructed_map->points[i], &pointcloud_effect->points[i]);
+        std::size_t index{0};
+        for (const auto& point : *origin_constructed_map)
+            point_lidar_to_world(point, pointcloud_effect->points[index++]);
 
-        sensor_msgs::msg::PointCloud2 laserCloudFullRes3;
-        pcl::toROSMsg(*pointcloud_effect, laserCloudFullRes3);
-        laserCloudFullRes3.header.stamp    = get_ros_time(lidar_end_timestamp);
-        laserCloudFullRes3.header.frame_id = "lidar_init";
+        sensor_msgs::msg::PointCloud2 msg;
+        pcl::toROSMsg(*pointcloud_effect, msg);
+        msg.header.stamp    = get_ros_time(lidar_end_timestamp);
+        msg.header.frame_id = "lidar_init";
 
-        ros_utility.publish_pointcloud_effect_world(laserCloudFullRes3);
+        ros_utility.publish_pointcloud_effect_world(msg);
     }
 
     void publish_constructed_map() {
-        const auto pointcloud_use  = enable_publish_pointcloud_dense
-                                       ? pointcloud_origin_undistort
-                                       : pointcloud_downsample_undistort_imu;
-        const auto pointcloud_size = pointcloud_use->points.size();
+        const auto pointcloud_use = enable_publish_pointcloud_dense
+                                      ? pointcloud_origin_undistort
+                                      : pointcloud_downsample_undistort_imu;
+        if (pointcloud_use->empty())
+            return;
 
-        // TODO: 这里显然可以用多线程加速
-        // 或者用 pcl 对点云整体变换的接口
-        auto constructed_map_part = std::make_shared<PointCloudXYZI>(pointcloud_size, 1);
-        for (int i = 0; i < pointcloud_size; i++)
-            rgb_point_body_to_world(&pointcloud_use->points[i], &constructed_map_part->points[i]);
+        const auto pointcloud_size      = pointcloud_use->points.size();
+        const auto constructed_map_part = std::make_shared<PointCloudXYZI>(pointcloud_size, 1);
+
+        std::size_t index{0};
+        for (auto& point : *constructed_map_part)
+            point_lidar_to_world(pointcloud_use->at(index++), point);
 
         *constructed_map_pointcloud += *constructed_map_part;
 
         // 对即将发布的点云进行降采样，你也不想你的 foxglove / rviz 爆掉吧
-        auto filtered_cloud = std::make_shared<pcl::PointCloud<PointType>>();
-        static pcl::VoxelGrid<PointType> filter;
+        auto filtered_cloud = std::make_shared<pcl::PointCloud<PointT>>();
+        static pcl::VoxelGrid<PointT> filter;
         filter.setLeafSize(0.2f, 0.2f, 0.2f);
         filter.setInputCloud(constructed_map_pointcloud);
         filter.filter(*filtered_cloud);
@@ -417,7 +370,7 @@ struct SLAM::Impl {
         current_odometry.child_frame_id  = "lidar_link";
 
         current_odometry.header.stamp = get_ros_time(lidar_end_timestamp);
-        sync_current_pose(current_odometry.pose);
+        load_current_pose_stamp(current_odometry.pose);
 
         ros_utility.publish_odometry(current_odometry);
 
@@ -479,7 +432,7 @@ struct SLAM::Impl {
     }
 
     void publish_path() {
-        sync_current_pose(current_pose_stamped);
+        load_current_pose_stamp(current_pose_stamped);
 
         current_pose_stamped.header.stamp    = get_ros_time(lidar_end_timestamp);
         current_pose_stamped.header.frame_id = "lidar_init";
@@ -489,21 +442,10 @@ struct SLAM::Impl {
         ros_utility.publish_path(current_path);
     }
 
-    void load_parameter(rclcpp::Node& node) {
+    void load_parameter_from_config(rclcpp::Node& node) {
         const auto p = [&node](const auto& _name, const auto& _default) -> auto {
             return node.get_parameter_or<std::remove_cvref_t<decltype(_default)>>(_name, _default);
         };
-
-        extrinsic_translation = std::vector<double>(3, 0.0);
-        extrinsic_orientation = std::vector<double>(9, 0.0);
-
-        pointcloud_origin_undistort         = std::make_shared<PointCloudXYZI>();
-        pointcloud_downsample_undistort_imu = std::make_shared<PointCloudXYZI>();
-        pointcloud_downsample_world         = std::make_shared<PointCloudXYZI>();
-        constructed_map_pointcloud          = std::make_shared<PointCloudXYZI>();
-        normal_vector                       = std::make_shared<PointCloudXYZI>(100000, 1);
-        origin_constructed_map              = std::make_shared<PointCloudXYZI>(100000, 1);
-        normal_vector_correspondence        = std::make_shared<PointCloudXYZI>(100000, 1);
 
         enable_publish_pointcloud_all          = p("publish.pointcloud_all", false);
         enable_publish_pointcloud_dense        = p("publish.pointcloud_dense", false);
@@ -545,7 +487,6 @@ struct SLAM::Impl {
     }
 
     void lasermap_fov_segment() {
-
         point_box_need_remove.clear();
 
         const auto robot_pose = current_robot_pose;
@@ -600,14 +541,14 @@ struct SLAM::Impl {
 
         local_map_point_box = new_local_map_points;
 
-        points_cache_collect();
-        double delete_begin = omp_get_wtime();
+        PointVector points_history;
+        ikdtree.acquire_removed_points(points_history);
 
         if (point_box_need_remove.size() > 0)
             ikdtree.Delete_Point_Boxes(point_box_need_remove);
     }
 
-    bool sync_packages(MeasureGroup& meas) {
+    bool bind_sensor_packages(MeasureGroup& meas) {
         static double lidar_mean_scan_time = 0.0;
         static int scan_number             = 0;
 
@@ -663,7 +604,6 @@ struct SLAM::Impl {
     }
 
     void map_incremental() {
-
         PointVector PointToAdd;
         PointToAdd.reserve(feats_downsample_size);
 
@@ -672,9 +612,9 @@ struct SLAM::Impl {
 
         for (int i = 0; i < feats_downsample_size; i++) {
             /* transform to world frame */
-            point_body_to_world(
-                &(pointcloud_downsample_undistort_imu->points[i]),
-                &(pointcloud_downsample_world->points[i]));
+            point_lidar_to_world(
+                pointcloud_downsample_undistort_imu->points[i],
+                pointcloud_downsample_world->points[i]);
 
             /* decide if need add to map */
             if (!nearest_points[i].empty() && ekf_initialized) {
@@ -684,8 +624,8 @@ struct SLAM::Impl {
                 bool need_add = true;
 
                 BoxPointType box_of_point;
-                PointType downsample_result;
-                PointType mid_point;
+                PointT downsample_result;
+                PointT mid_point;
 
                 mid_point.x = static_cast<float>(
                     floor(pointcloud_downsample_world->points[i].x / filter_size_map_min)
@@ -727,7 +667,6 @@ struct SLAM::Impl {
             }
         }
 
-        double st_time = omp_get_wtime();
         ikdtree.Add_Points(PointToAdd, true);
         ikdtree.Add_Points(PointNoNeedDownsample, false);
     }
@@ -859,24 +798,13 @@ struct SLAM::Impl {
         }
     }
 
-    void reset_trigger_callback(rclcpp::Node& node) {
+    void reset_slam(rclcpp::Node& node) {
         rclcpp_info("reset slam process now");
 
         preprocess  = std::make_unique<Preprocess>();
         imu_process = std::make_unique<ImuProcess>();
 
-        ////////// ROS2 INTERFACE //////////
-        // timer
-        update_timer->cancel();
-        publish_constructed_map_timer->cancel();
-
-        // some switch to change mode
-        enable_publish_pointcloud_effect_world = false;
-        enable_publish_constructed_map         = false;
-        enable_publish_pointcloud_all          = false;
-        enable_publish_pointcloud_dense        = false;
-        enable_publish_pointcloud_imu          = false;
-        enable_publish_path                    = true;
+        ros_utility.stop_service();
 
         current_path         = nav_msgs::msg::Path{};
         current_odometry     = nav_msgs::msg::Odometry{};
@@ -947,41 +875,18 @@ struct SLAM::Impl {
         ikdtree.~KD_TREE();
         new (&ikdtree) KD_TREE<pcl::PointXYZINormal>{};
 
-        // EKF inputs and output
         current_sensor_package = MeasureGroup{};
         current_robot_pose     = MTK::vect<3, double>{};
         extended_kalman_filter = esekfom::esekf<state_ikfom, 12, input_ikfom>{};
-        ekf_prediction_result  = state_ikfom{};
+        current_ekf_prediction = state_ikfom{};
 
-        update_timer->reset();
-        publish_constructed_map_timer->reset();
+        ros_utility.start_service();
 
         rclcpp_info("parameters have reset");
 
         initialize(node);
 
         rclcpp_info("reconstruct slam context successfully");
-    }
-
-    void standard_subscription_callback(const sensor_msgs::msg::PointCloud2::UniquePtr& msg) {
-        global_mutex.lock();
-        double time_current          = get_time_sec(msg->header.stamp);
-        double preprocess_start_time = omp_get_wtime();
-        if (!first_receive_lidar && time_current < last_timestamp_lidar) {
-            std::cerr << "lidar loop back, clear buffer" << std::endl;
-            lidar_buffer.clear();
-        }
-        if (first_receive_lidar) {
-            first_receive_lidar = false;
-        }
-
-        PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-        preprocess->process(msg, ptr);
-        lidar_buffer.push_back(ptr);
-        timestamp_buffer.push_back(time_current);
-        last_timestamp_lidar = time_current;
-        global_mutex.unlock();
-        global_signal.notify_all();
     }
 
     void lidar_subscription_callback(const livox_ros_driver2::msg::CustomMsg::UniquePtr& msg) {
@@ -1047,20 +952,6 @@ struct SLAM::Impl {
         global_signal.notify_all();
     }
 
-    void publish_constructed_map_timer_callback() {
-        if (enable_publish_constructed_map)
-            publish_constructed_map();
-    }
-
-    void map_save_callback(
-        const std_srvs::srv::Trigger::Request::ConstSharedPtr& req,
-        const std_srvs::srv::Trigger::Response::SharedPtr& res) {
-        rclcpp_info("saving map to %s ...", constructed_map_save_path.c_str());
-        save_to_pcd();
-        res->success = true;
-        res->message = "map saved.";
-    }
-
 #pragma clang diagnostic ignored "-Wformat-security"
     std::shared_ptr<rclcpp::Logger> logger;
 
@@ -1084,21 +975,15 @@ struct SLAM::Impl {
     RosUtil ros_utility{};
 
     // IKD 树
-    KD_TREE<PointType> ikdtree;
+    KD_TREE<PointT> ikdtree;
 
     std::unique_ptr<Preprocess> preprocess{std::make_unique<Preprocess>()};
 
     std::unique_ptr<ImuProcess> imu_process{std::make_unique<ImuProcess>()};
 
-    pcl::VoxelGrid<PointType> downsample_scan_filter;
-
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr map_save_trigger;
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_trigger;
+    pcl::VoxelGrid<PointT> downsample_scan_filter;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> transfrom_boardcaster;
-
-    rclcpp::TimerBase::SharedPtr update_timer;
-    rclcpp::TimerBase::SharedPtr publish_constructed_map_timer;
 
     // some switch to change mode
     bool enable_publish_pointcloud_effect_world = false;
@@ -1161,7 +1046,7 @@ struct SLAM::Impl {
 
     esekfom::esekf<state_ikfom, 12, input_ikfom> extended_kalman_filter;
 
-    state_ikfom ekf_prediction_result;
+    state_ikfom current_ekf_prediction;
 
     std::array<double, 23> ekf_limit_array;
 
