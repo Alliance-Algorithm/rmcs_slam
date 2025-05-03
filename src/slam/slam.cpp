@@ -33,11 +33,10 @@ using namespace rmcs;
 static constexpr auto initialize_interval = 0.1;
 static constexpr auto lidar_point_cov     = 0.001;
 
-static std::mutex global_mutex;
-static std::condition_variable global_signal;
+static auto global_mutex  = std::mutex{};
+static auto global_signal = std::condition_variable{};
 
 // let a static c style function pointer accesses the no-static member function
-// fuck the code style of fast_lio
 using ProcessCallback = std::function<void(state_ikfom&, esekfom::dyn_share_datastruct<double>&)>;
 class FuncHelperClass {
     static inline ProcessCallback object;
@@ -50,7 +49,6 @@ public:
 };
 
 struct SLAM::Impl {
-
     void initialize(rclcpp::Node& node) {
         std::signal(SIGINT, [](int) {
             global_signal.notify_all();
@@ -681,10 +679,8 @@ struct SLAM::Impl {
         origin_constructed_map->clear();
         normal_vector_correspondence->clear();
 
-// closest surface search and residual computation
-#ifdef MP_EN
-# pragma omp parallel for default(none) shared(s) shared(ekfom_data) num_threads(MP_PROC_NUM)
-#endif
+#pragma omp parallel for default(none) shared(s) shared(ekfom_data) num_threads(MP_PROC_NUM)
+        // closest surface search and residual computation
         for (int i = 0; i < feats_downsample_size; i++) {
             auto& point_body  = pointcloud_downsample_undistort_imu->points[i];
             auto& point_world = pointcloud_downsample_world->points[i];
@@ -720,18 +716,13 @@ struct SLAM::Impl {
             if (!points_selected_surf[i])
                 continue;
 
-            auto plane = Eigen::Matrix<float, 4, 1>{};
-
             points_selected_surf[i] = false;
 
+            auto plane = Eigen::Matrix<float, 4, 1>{};
             if (esti_plane(plane, points_near, 0.1f)) {
-
                 float distance2 = plane(0) * point_world.x + plane(1) * point_world.y
                                 + plane(2) * point_world.z + plane(3);
-
-                auto score =
-                    static_cast<float>(1 - 0.9 * std::fabs(distance2) / std::sqrt(p_body.norm()));
-
+                auto score = 1.f - 0.9 * std::abs(distance2) / std::sqrt(p_body.norm());
                 if (score > 0.9) {
                     points_selected_surf[i]            = true;
                     normal_vector->points[i].x         = plane(0);
@@ -757,8 +748,7 @@ struct SLAM::Impl {
 
         if (pointcloud_effect_size < 1) {
             ekfom_data.valid = false;
-            std::cerr << "No Effective Points!" << std::endl;
-            // ROS_WARN("No Effective Points! \n");
+            rclcpp_error("no effective points");
             return;
         }
 

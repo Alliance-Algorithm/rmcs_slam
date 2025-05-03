@@ -240,9 +240,9 @@ void ImuProcess::undistort_pcl(
                    - imu_state.offset_T_L_I); // not accurate!
 
             // save Undistorted points and their rotation
-            it_pcl->x = P_compensate(0);
-            it_pcl->y = P_compensate(1);
-            it_pcl->z = P_compensate(2);
+            it_pcl->x = static_cast<float>(P_compensate(0));
+            it_pcl->y = static_cast<float>(P_compensate(1));
+            it_pcl->z = static_cast<float>(P_compensate(2));
 
             if (it_pcl == pcl_out.points.begin())
                 break;
@@ -252,7 +252,7 @@ void ImuProcess::undistort_pcl(
 
 void ImuProcess::process(
     const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
-    PointCloudXYZI::Ptr undistort_pointcloud) {
+    const std::shared_ptr<PointCloudXYZI>& undistrot_pointcloud) {
 
     if (meas.imu.empty()) {
         return;
@@ -277,12 +277,9 @@ void ImuProcess::process(
             cov_gyr = cov_gyr_scale;
 
             std::cout << "[imu_process]: imu initialize done" << std::endl;
-
-            fout_imu.open(DEBUG_FILE_DIR("imu.txt"), std::ios::out);
         }
-
         return;
     }
 
-    undistort_pcl(meas, kf_state, *undistort_pointcloud);
+    undistort_pcl(meas, kf_state, *undistrot_pointcloud);
 }

@@ -32,7 +32,6 @@
 #define ARRAY_FROM_EIGEN(mat)  mat.data(), (mat).data() + (mat).rows() * (mat).cols()
 #define STD_VEC_FROM_EIGEN(mat) \
     std::vector<decltype(mat)::Scalar>((mat).data(), (mat).data() + (mat).rows() * (mat).cols())
-#define DEBUG_FILE_DIR(name) (std::string(std::string(ROOT_DIR) + "log/" + (name)))
 
 typedef rmcs_slam::msg::Pose6D Pose6D;
 typedef pcl::PointXYZINormal PointT;

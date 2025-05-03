@@ -1,0 +1,20 @@
+rmcs_location:
+  ros__parameters:
+    subscription:
+      slam_pose: "/rmcs_slam/pose"
+
+    publish:
+      robot_pose: "/rmcs_location/pose"
+
+    enable:
+      relocation_initial: false
+      relocation_automaic: false
+
+    # 重定位所用的地图，地图原点需要为哨兵导航的原点
+    # 格式为 pcd
+    # 确保地图的位姿是正确的，地板与 xy 平面重合
+    map_path: "/workspaces/RMCS/develop_ws/pcd/battlefiled.pcd"
+    minimum_height: -0.5
+    maximum_height: -3.0
+
+

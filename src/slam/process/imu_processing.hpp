@@ -43,9 +43,10 @@ public:
     void set_acc_cov(const V3D& scaler);
     void set_gyr_bias_cov(const V3D& b_g);
     void set_acc_bias_cov(const V3D& b_a);
+
     void process(
         const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
-        PointCloudXYZI::Ptr undistrot_pointcloud);
+        const std::shared_ptr<PointCloudXYZI>& undistrot_pointcloud);
 
     Eigen::Matrix<double, 12, 12> Q;
     std::ofstream fout_imu;
@@ -62,7 +63,7 @@ private:
         const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, int& N);
     void undistort_pcl(
         const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
-        PointCloudXYZI& pcl_in_out);
+        PointCloudXYZI& pcl_out);
 
     PointCloudXYZI::Ptr cur_pcl_un_;
     sensor_msgs::msg::Imu::ConstSharedPtr last_imu_;
