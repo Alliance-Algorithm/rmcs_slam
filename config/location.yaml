@@ -1,20 +1,49 @@
 rmcs_location:
   ros__parameters:
     subscription:
+      # 里程计的位姿发布，基于重定位校准后的变换将以下面的位姿为基础
       slam_pose: "/rmcs_slam/pose"
 
     publish:
+      # 经过重定位校准的位姿
       robot_pose: "/rmcs_location/pose"
 
     enable:
+      # 初始重定位，在裁判系统自检时进行
+      # 要求初始旋转解比较好
       relocation_initial: false
+      # 运行过程中丢失定位后进行重定位
+      # 初始解为发散前的位姿
       relocation_automaic: false
+
+    registration:
+      # 粗配准的最大迭代次数，包含对旋转解的穷举
+      coarse_iterations: 50
+      # 精配准的最大迭代次数
+      precise_iterations: 100
+      # 迭代中的最大距离限制，超过此距离的解被认定为无效解
+      distance_threshold: 5.0
+      # 用于求解的线程数，配准开销挺大的
+      threads: 10
+      # 用于粗配准穷举旋转解的步长，单位是度
+      scan_angle: 20
+      # 优于此值的分数被认定为有效解，即刻停止配准
+      # 越小越优质，范围是 0 ~ 1.0
+      score_threshold: 0.01
+      # 体素滤波，不解释，单位都是 m
+      voxel_grid:
+        lx: 0.2
+        ly: 0.2
+        lz: 0.2
+      # 离群点滤波
+      outlier_removal:
+        # 一簇点云的界定数量
+        mean_k: 50
+        # 判断离群点的倍数判据，大于以下倍数标准差的点即为离群
+        stddev_mul_thresh: 0.5
 
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd
     # 确保地图的位姿是正确的，地板与 xy 平面重合
     map_path: "/workspaces/RMCS/develop_ws/pcd/battlefiled.pcd"
-    minimum_height: -0.5
-    maximum_height: -3.0
-
-
+    test_path: "/workspaces/RMCS/develop_ws/pcd/1716207380.pcd"

@@ -64,6 +64,10 @@ find_package(OpenCV REQUIRED)
 find_package(nanoflann REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io)
 
+# fast-gicp 构建
+add_subdirectory(src/third-party/fast_gicp)
+include_directories(src/third-party/fast_gicp/include/)
+
 include_directories(src/)
 include_directories(src/slam/)
 include_directories(src/obstacle/)
@@ -133,9 +137,9 @@ ament_target_dependencies(
 )
 target_link_libraries(
     location
+    fast_gicp
     ${PCL_LIBRARIES}
     ${OpenCV_LIBRARIES}
-    nanoflann::nanoflann
 )
 
 # ROS2 安装配置
