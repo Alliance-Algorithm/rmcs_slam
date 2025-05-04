@@ -13,6 +13,7 @@ struct Segmentation::Impl {
     std::shared_ptr<PointCloud> source;
 
     double limit_distance              = 10.0;
+    double limit_max_height            = 0.5;
     double segmentation_point_distance = 0.01;
     pcl::SACSegmentation<PointCloud::PointType> segmentation;
 
@@ -44,22 +45,25 @@ void Segmentation::set_input_source(const std::shared_ptr<PointCloud>& source) {
 
 std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
 
-    auto outside = std::make_shared<pcl::ConditionAnd<PointCloud::PointType>>();
-    outside->addComparison(
+    auto outside_condition = std::make_shared<pcl::ConditionAnd<PointCloud::PointType>>();
+    outside_condition->addComparison(
         std::make_shared<const pcl::FieldComparison<PointCloud::PointType>>(
             "x", pcl::ComparisonOps::GT, -pimpl->limit_distance / 2.0));
-    outside->addComparison(
+    outside_condition->addComparison(
         std::make_shared<const pcl::FieldComparison<PointCloud::PointType>>(
             "x", pcl::ComparisonOps::LT, pimpl->limit_distance / 2.0));
-    outside->addComparison(
+    outside_condition->addComparison(
         std::make_shared<const pcl::FieldComparison<PointCloud::PointType>>(
             "y", pcl::ComparisonOps::GT, -pimpl->limit_distance / 2.0));
-    outside->addComparison(
+    outside_condition->addComparison(
         std::make_shared<const pcl::FieldComparison<PointCloud::PointType>>(
             "y", pcl::ComparisonOps::LT, pimpl->limit_distance / 2.0));
+    outside_condition->addComparison(
+        std::make_shared<const pcl::FieldComparison<PointCloud::PointType>>(
+            "z", pcl::ComparisonOps::LT, pimpl->limit_max_height));
 
     pcl::ConditionalRemoval<PointCloud::PointType> removal;
-    removal.setCondition(outside);
+    removal.setCondition(outside_condition);
     removal.setInputCloud(pimpl->source);
 
     auto pointcloud_removed_xy = std::make_shared<PointCloud>();
