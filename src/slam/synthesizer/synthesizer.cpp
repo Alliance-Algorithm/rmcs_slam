@@ -3,11 +3,99 @@
 
 #include "synthesizer.hpp"
 #include "util/convert.hpp"
+#include "util/logger.hpp"
+#include "util/parameter.hpp"
+
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <sensor_msgs/msg/point_cloud2.h>
 
 using namespace rmcs;
 
 struct Synthesizer::Impl {
 public:
+    void initialize(rclcpp::Node& node) {
+        auto p = util::quick_paramtetr_reader(node);
+
+        enable_primary   = p("primary_lidar.enable", bool{});
+        enable_secondary = p("secondary_lidar.enable", bool{});
+        rclcpp_info("primary: %d, secondary: %d", enable_primary, enable_secondary);
+
+        if (!enable_primary)
+            throw std::runtime_error{"at least enable primary lidar"};
+
+        const auto initialize_context = [&](LidarContext& context, const std::string& index) {
+            const auto lidar_topic = p(index + "_lidar.lidar_topic", std::string{""});
+            const auto imu_topic   = p(index + "_lidar.imu_topic", std::string{""});
+            const auto x           = p(index + "_lidar.x", double{0});
+            const auto y           = p(index + "_lidar.y", double{0});
+            const auto z           = p(index + "_lidar.z", double{0});
+            const auto yaw         = p(index + "_lidar.yaw", double{0});
+            const auto pitch       = p(index + "_lidar.pitch", double{0});
+            const auto roll        = p(index + "_lidar.roll", double{0});
+
+            const auto translation = Eigen::Translation3d{x, y, z};
+            const auto orientation =
+                Eigen::Quaterniond{
+                    Eigen::AngleAxisd(yaw / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())
+                    * Eigen::AngleAxisd(pitch / 180 * std::numbers::pi, Eigen::Vector3d::UnitY())
+                    * Eigen::AngleAxisd(roll / 180 * std::numbers::pi, Eigen::Vector3d::UnitX())}
+                    .normalized();
+
+            context.initialize(node, lidar_topic, imu_topic, orientation, translation);
+            rclcpp_info("-------------------  %s ---------------------", index.c_str());
+            rclcpp_info(
+                "%s context with t[%4.2f %4.2f %4.2f], q[%4.2f %4.2f %4.2f %4.2f]", index.c_str(),
+                translation.x(), translation.y(), translation.z(), orientation.w(), orientation.x(),
+                orientation.y(), orientation.z());
+            rclcpp_info("yaw: %5.2f, pitch: %5.2f, roll: %5.2f", yaw, pitch, roll);
+            rclcpp_info("lidar topic: %s", lidar_topic.c_str());
+            rclcpp_info("imu   topic: %s", imu_topic.c_str());
+        };
+
+        if (enable_primary)
+            initialize_context(primary_context, "primary");
+        if (enable_secondary)
+            initialize_context(secondary_context, "secondary");
+    }
+
+    // 传入的回调理应是 slam 的点云和 IMU 回调
+    void register_callback(const auto& livox_callback, const auto& imu_callback) {
+        if (!enable_secondary) {
+            primary_context.register_callback(livox_callback, imu_callback);
+            return;
+        }
+
+        rclcpp_info("启用辅助雷达");
+
+        const auto primary_livox_callback = [=, this](const std::unique_ptr<LivoxMsg>& msg) {
+            // 次级雷达会时刻同步点云至缓存，选取一个Free的点云进行合并
+            std::size_t buffer_index =
+                secondary_write_first_buffer.load(std::memory_order::relaxed) ? 1 : 0;
+            auto& secondary_msg = secondary_buffer[buffer_index];
+            for (const auto point : secondary_msg.points)
+                msg->points.push_back(point);
+            msg->point_num = msg->points.size();
+            livox_callback(msg);
+        };
+        const auto secondary_livox_callback = [this](const std::unique_ptr<LivoxMsg>& msg) {
+            auto read_first        = secondary_write_first_buffer.load(std::memory_order::relaxed);
+            std::size_t read_index = read_first ? 0 : 1;
+            secondary_buffer[read_index] = *msg;
+            secondary_write_first_buffer.store(!read_first, std::memory_order::relaxed);
+        };
+        primary_context.register_callback(primary_livox_callback, imu_callback);
+        secondary_context.register_callback(secondary_livox_callback, [](const auto&) {});
+    }
+
+private:
+    RMCS_INITIALIZE_LOGGER("rmcs-slam");
+
+    std::array<LivoxMsg, 2> secondary_buffer;
+    std::atomic<bool> secondary_write_first_buffer;
+    bool enable_primary{false};
+    bool enable_secondary{false};
+
     /// @brief 单个雷达相关ROS2接口的包装
     struct LidarContext {
         std::shared_ptr<rclcpp::Subscription<LivoxMsg>> pointcloud_subscription;
@@ -96,88 +184,6 @@ public:
         }
 
     } primary_context, secondary_context;
-
-public:
-    /// @brief ros2 wrapper initialize
-    void initialize(rclcpp::Node& node) {
-
-        const auto rclcpp_info = [&node](const char* format, auto&&... args) {
-            RCLCPP_INFO(node.get_logger(), format, std::forward<decltype(args)>(args)...);
-        };
-
-        const auto p = [&node](const auto& _name, const auto& _default) -> auto {
-            return node.get_parameter_or<std::remove_cvref_t<decltype(_default)>>(_name, _default);
-        };
-
-        const auto primary_enbale   = p("primary_lidar.enable", false);
-        const auto secondary_enbale = p("secondary_lidar.enable", false);
-        if (!primary_enbale && !secondary_enbale)
-            throw std::runtime_error{"at least one lidiar was enabled"};
-
-        rclcpp_info("primary: %d, secondary: %d", primary_enbale, secondary_enbale);
-
-        double x, y, z, yaw, pitch, roll;
-        if (primary_enbale) {
-            const auto lidar_topic = p("primary_lidar.lidar_topic", std::string{""});
-            const auto imu_topic   = p("primary_lidar.imu_topic", std::string{""});
-            const auto lidar_x     = p("primary_lidar.x", double{0});
-            const auto lidar_y     = p("primary_lidar.y", double{0});
-            const auto lidar_z     = p("primary_lidar.z", double{0});
-            const auto lidar_yaw   = p("primary_lidar.yaw", double{0});
-            const auto lidar_pitch = p("primary_lidar.pitch", double{0});
-            const auto lidar_roll  = p("primary_lidar.roll", double{0});
-
-            std::tie(x, y, z)          = std::tuple{lidar_x, lidar_yaw, lidar_z};
-            std::tie(yaw, pitch, roll) = std::tuple{lidar_yaw, lidar_pitch, lidar_roll};
-
-            const auto translation = Eigen::Translation3d{x, y, z};
-            const auto rotation    = Eigen::Quaterniond{
-                Eigen::AngleAxisd(yaw / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())
-                * Eigen::AngleAxisd(pitch / 180 * std::numbers::pi, Eigen::Vector3d::UnitY())
-                * Eigen::AngleAxisd(roll / 180 * std::numbers::pi, Eigen::Vector3d::UnitX())};
-
-            primary_context.initialize(node, lidar_topic, imu_topic, rotation, translation);
-
-            rclcpp_info("primary lidar was initialized");
-            rclcpp_info("lidar topic: %s", lidar_topic.c_str());
-            rclcpp_info("imu   topic: %s", imu_topic.c_str());
-            rclcpp_info("x: %5.3f, y: %5.3f, z: %5.3f", x, y, z);
-            rclcpp_info("yaw: %5.2f, pitch: %5.2f, roll: %5.2f", yaw, pitch, roll);
-        }
-
-        if (secondary_enbale) {
-            const auto lidar_topic = p("secondary_lidar.lidar_topic", std::string{""});
-            const auto imu_topic   = p("secondary_lidar.imu_topic", std::string{""});
-            const auto lidar_x     = p("secondary_lidar.x", double{0});
-            const auto lidar_y     = p("secondary_lidar.y", double{0});
-            const auto lidar_z     = p("secondary_lidar.z", double{0});
-            const auto lidar_yaw   = p("secondary_lidar.yaw", double{0});
-            const auto lidar_pitch = p("secondary_lidar.pitch", double{0});
-            const auto lidar_roll  = p("secondary_lidar.roll", double{0});
-
-            std::tie(x, y, z)          = std::tuple{lidar_x, lidar_y, lidar_z};
-            std::tie(yaw, pitch, roll) = std::tuple{lidar_yaw, lidar_pitch, lidar_roll};
-
-            const auto translation = Eigen::Translation3d{x, y, z};
-            const auto rotation    = Eigen::Quaterniond{
-                Eigen::AngleAxisd(yaw / 180 * std::numbers::pi, Eigen::Vector3d::UnitZ())
-                * Eigen::AngleAxisd(pitch / 180 * std::numbers::pi, Eigen::Vector3d::UnitY())
-                * Eigen::AngleAxisd(roll / 180 * std::numbers::pi, Eigen::Vector3d::UnitX())};
-
-            secondary_context.initialize(node, lidar_topic, imu_topic, rotation, translation);
-
-            rclcpp_info("secondary lidar was initialized");
-            rclcpp_info("lidar topic: %s", lidar_topic.c_str());
-            rclcpp_info("imu   topic: %s", imu_topic.c_str());
-            rclcpp_info("x: %5.3f, y: %5.3f, z: %5.3f", x, y, z);
-            rclcpp_info("yaw: %5.2f, pitch: %5.2f, roll: %5.2f", yaw, pitch, roll);
-        }
-    }
-
-    void register_callback(const auto& livox_callback, const auto& imu_callback) {
-        primary_context.register_callback(livox_callback, imu_callback);
-        secondary_context.register_callback(livox_callback, imu_callback);
-    }
 };
 
 Synthesizer::Synthesizer()

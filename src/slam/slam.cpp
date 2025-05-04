@@ -7,6 +7,7 @@
 #include "process/preprocess.hpp"
 #include "ros_util/ros_util.hpp"
 #include "synthesizer/synthesizer.hpp"
+#include "util/parameter.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -885,7 +886,7 @@ struct SLAM::Impl {
         double cur_time              = get_time_sec(msg->header.stamp);
         double preprocess_start_time = omp_get_wtime();
         if (!first_receive_lidar && cur_time < last_timestamp_lidar) {
-            std::cerr << "lidar loop back, clear buffer" << std::endl;
+            rclcpp_info("雷达时间戳出现倒退，清空缓存区");
             lidar_buffer.clear();
         }
         if (first_receive_lidar) {
@@ -931,7 +932,7 @@ struct SLAM::Impl {
         global_mutex.lock();
 
         if (timestamp < last_timestamp_imu) {
-            rclcpp_error("lidar loop back, clear buffer");
+            rclcpp_warn("IMU消息时间戳出现倒退，清空缓存区");
             imu_buffer.clear();
         }
 
@@ -1066,12 +1067,8 @@ struct SLAM::Impl {
     std::vector<PointVector> nearest_points;
 };
 
-static const auto option = rclcpp::NodeOptions()
-                               .allow_undeclared_parameters(true)
-                               .automatically_declare_parameters_from_overrides(true);
-
 SLAM::SLAM()
-    : Node("rmcs_slam", option)
+    : Node("rmcs_slam", util::NodeOptions{})
     , pimpl(std::make_unique<Impl>()) {
     pimpl->initialize(*this);
 }
