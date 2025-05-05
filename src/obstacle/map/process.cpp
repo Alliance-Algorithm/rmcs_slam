@@ -105,13 +105,13 @@ std::unique_ptr<ObstacleMap>
         auto& node = obstacle_map(x, y);
         if (node.points < pimpl->points_limit)
             continue;
-        if (node.max < pimpl->height_limit)
+        if (node.max - node.min < pimpl->height_limit)
             continue;
         obstacle_map.update_node(x, y, 100);
     }
     // 三次更新，作可行域射线投射
     filter_map(obstacle_map);
-    obstacle_map.ray_cast_with_infinty_unkwon();
+    obstacle_map.ray_cast_with_infinty_avaliable();
 
     return std::make_unique<ObstacleMap>(std::move(obstacle_map));
 }

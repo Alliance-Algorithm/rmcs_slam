@@ -42,9 +42,9 @@ rmcs_map:
             # 雷达的盲区
             lidar_blind: 0.8
             # 有效点数量阈值，出现在网格的点大于该数才视作有效
-            points_limit: 0
+            points_limit: 5
             # 有效点高度阈值，障碍物高度大于此值才视作有效
-            height_limit: 0.1
+            height_limit: 0.2
         filter:
             # 障碍地图的阈值，大于此值视为障碍物
             # 量纲是由真实高度缩放至 0 -> 127 后求梯度得来的

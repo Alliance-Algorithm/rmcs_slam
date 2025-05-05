@@ -32,7 +32,7 @@ public:
         internal_nodes[x][y].value = v;
     }
 
-    void ray_cast_with_infinty_unkwon() {
+    void ray_cast_with_infinty_unknown() {
         constexpr auto d = [](auto v) -> auto { return static_cast<double>(v); };
         const auto ox    = width() / 2;
         const auto oy    = width() / 2;
