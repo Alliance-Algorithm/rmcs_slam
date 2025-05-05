@@ -51,7 +51,7 @@ rmcs_map:
             threshold: 30
             # 预先膨胀，为了更好的闭合障碍物
             pre_dilate_size: 3
-            pre_dilate_times: 0
+            pre_dilate_times: 1
             # 闭合，拟补激光雷达点云的缺口
             pre_close_size: 5
             pre_close_times: 1

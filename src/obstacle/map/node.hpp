@@ -32,9 +32,49 @@ public:
         internal_nodes[x][y].value = v;
     }
 
-    void ray_cast() {
-        assert(ros < width && col < width);
+    void ray_cast_with_infinty_unkwon() {
+        constexpr auto d = [](auto v) -> auto { return static_cast<double>(v); };
+        const auto ox    = width() / 2;
+        const auto oy    = width() / 2;
 
+        for (std::size_t x = 0; x < width(); x++)
+            for (std::size_t y = 0; y < width(); y++) {
+                auto& node = data()[x][y];
+                if (node.value == -1)
+                    continue;
+
+                if (x == ox) {
+                    auto [y_min, y_max] = std::minmax(oy, y);
+                    for (auto step = y_min; step < y_max; step++) {
+                        auto& node = data()[ox][step];
+                        if (node.value == -1)
+                            node.value = 0;
+                    }
+                }
+
+                const auto k1       = (d(y) - d(oy)) / (d(x) - d(ox));
+                const auto b1       = d(oy) - k1 * d(ox);
+                const auto f1       = [=](std::size_t _x) -> double { return k1 * d(_x) + b1; };
+                auto [x_min, x_max] = std::minmax(ox, x);
+                for (auto step = x_min; step < x_max; step++) {
+                    auto& node1 = data()[step][static_cast<std::size_t>(f1(step))];
+                    if (node1.value == -1)
+                        node1.value = 0;
+                }
+
+                const auto k2       = (d(x) - d(ox)) / (d(y) - d(oy));
+                const auto b2       = d(ox) - k2 * d(oy);
+                const auto f2       = [=](std::size_t _y) -> double { return k2 * d(_y) + b2; };
+                auto [y_min, y_max] = std::minmax(oy, y);
+                for (auto step = y_min; step < y_max; step++) {
+                    auto& node1 = data()[static_cast<std::size_t>(f2(step))][step];
+                    if (node1.value == -1)
+                        node1.value = 0;
+                }
+            }
+    }
+
+    void ray_cast_with_infinty_avaliable() {
         constexpr auto d = [](auto v) -> auto { return static_cast<double>(v); };
 
         // 中点
