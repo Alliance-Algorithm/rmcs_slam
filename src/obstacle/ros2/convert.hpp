@@ -9,11 +9,16 @@
 
 #include "../map/node.hpp"
 
-namespace ros2::convert {
+namespace rmcs {
+
 void livox_to_pcl(
     const std::vector<livox_ros_driver2::msg::CustomPoint>& livox,
     pcl::PointCloud<pcl::PointXYZ>& pcl);
+
 void pc2_to_pcl(const sensor_msgs::msg::PointCloud2& pc2, pcl::PointCloud<pcl::PointXYZ>& pcl);
+
 void pcl_to_pc2(const pcl::PointCloud<pcl::PointXYZ>& pcl, sensor_msgs::msg::PointCloud2& pc2);
-void node_to_grid_map(type::NodeMap& node_map, nav_msgs::msg::OccupancyGrid& occupancy_map);
-}; // namespace ros2::convert
+
+void node_to_grid_map(ObstacleMap& nodes, nav_msgs::msg::OccupancyGrid& occupancy);
+
+}; // namespace rmcs

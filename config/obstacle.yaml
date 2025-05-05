@@ -1,4 +1,4 @@
-param_server:
+rmcs_map:
     ros__parameters:
         name:
             # publish
@@ -35,15 +35,16 @@ param_server:
             # 点云分割中选取的高度
             ground_height: 0.2
         grid:
-            # 栅格地图的分辨率
+            # 栅格地图的分辨率，单位 m
             resolution: 0.1
-            # 栅格地图边长
-            grid_width: 10.0
+            # 栅格地图边长，单位 m
+            grid_width: 10.1
             # 雷达的盲区
-            lidar_blind: 0.52
-            # 一个神秘比例，将实际距离映射为栅格地图
-            # 数据的范围
-            height_wight: 120.0
+            lidar_blind: 0.8
+            # 有效点数量阈值，出现在网格的点大于该数才视作有效
+            points_limit: 5
+            # 有效点高度阈值，障碍物高度大于此值才视作有效
+            height_limit: 0.2
         filter:
             # 障碍地图的阈值，大于此值视为障碍物
             # 量纲是由真实高度缩放至 0 -> 127 后求梯度得来的

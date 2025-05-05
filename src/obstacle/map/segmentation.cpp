@@ -13,7 +13,7 @@ struct Segmentation::Impl {
     std::shared_ptr<PointCloud> source;
 
     double limit_distance              = 10.0;
-    double limit_max_height            = 0.5;
+    double limit_max_height            = 1.0;
     double segmentation_point_distance = 0.01;
     pcl::SACSegmentation<PointCloud::PointType> segmentation;
 

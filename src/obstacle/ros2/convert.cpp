@@ -3,29 +3,33 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 
-void ros2::convert::livox_to_pcl(
+namespace rmcs {
+
+void livox_to_pcl(
     const std::vector<livox_ros_driver2::msg::CustomPoint>& livox,
     pcl::PointCloud<pcl::PointXYZ>& pcl) {
     for (const auto point : livox)
         pcl.points.emplace_back(point.x, point.y, point.z);
 }
 
-void ros2::convert::pc2_to_pcl(
-    const sensor_msgs::msg::PointCloud2& pc2, pcl::PointCloud<pcl::PointXYZ>& pcl) {
+void pc2_to_pcl(const sensor_msgs::msg::PointCloud2& pc2, pcl::PointCloud<pcl::PointXYZ>& pcl) {
     pcl::fromROSMsg(pc2, pcl);
 }
 
-void ros2::convert::pcl_to_pc2(
-    const pcl::PointCloud<pcl::PointXYZ>& pcl, sensor_msgs::msg::PointCloud2& pc2) {
+void pcl_to_pc2(const pcl::PointCloud<pcl::PointXYZ>& pcl, sensor_msgs::msg::PointCloud2& pc2) {
     pcl::toROSMsg(pcl, pc2);
 }
 
-void ros2::convert::node_to_grid_map(
-    type::NodeMap& node_map, nav_msgs::msg::OccupancyGrid& occupancy_map) {
-    occupancy_map.info.width  = node_map.width();
-    occupancy_map.info.height = node_map.length();
+void node_to_grid_map(ObstacleMap& nodes, nav_msgs::msg::OccupancyGrid& occupancy) {
+    const auto width = nodes.width();
 
-    occupancy_map.data = std::vector<int8_t>(node_map.width() * node_map.length());
-    for (const auto& node : *node_map)
-        occupancy_map.data[node.x + node.y * node_map.width()] = node.value;
+    occupancy.info.width  = width;
+    occupancy.info.height = width;
+
+    occupancy.data = std::vector<int8_t>(width * width);
+    for (auto x = 0; x < width; x++)
+        for (auto y = 0; y < width; y++) {
+            occupancy.data[x + y * width] = nodes(x, y).value;
+        }
 };
+} // namespace rmcs

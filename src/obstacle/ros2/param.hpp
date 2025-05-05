@@ -1,21 +1,19 @@
 #pragma once
 
+#include "util/parameter.hpp"
+
 #include <rclcpp/node.hpp>
 
 namespace param {
 inline auto node = std::shared_ptr<rclcpp::Node>();
 
 template <typename T>
-inline auto get(const std::string& name)
-{
+inline auto get(const std::string& name) {
     // node for lazy constructing
     if (node == nullptr)
-        node = std::make_shared<rclcpp::Node>(
-            "param_server",
-            rclcpp::NodeOptions()
-                .automatically_declare_parameters_from_overrides(true));
+        node = std::make_shared<rclcpp::Node>("rmcs_map", rmcs::util::NodeOptions{});
 
-    auto param = T {};
+    auto param = T{};
     node->get_parameter<T>(name, param);
     return param;
 }

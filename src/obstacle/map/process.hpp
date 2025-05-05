@@ -1,34 +1,27 @@
 #pragma once
 
 #include "node.hpp"
+#include "util/logger.hpp"
+#include "util/pimpl.hpp"
 
-#include <memory>
-
-#include <Eigen/Eigen>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
-#include <livox_ros_driver2/msg/custom_msg.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
+namespace rmcs {
 
 class Process {
+    RMCS_PIMPL_DEFINTION(Process);
+
 public:
-    Process();
+    std::unique_ptr<ObstacleMap>
+        generate_node_map(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud);
 
-    void info(const bool& flag) noexcept { enable_info_ = flag; }
-    void info(const std::string& string) const;
-
-    std::unique_ptr<type::NodeMap> generate_node_map(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud);
-    std::unique_ptr<type::NodeMap> generate_cost_map(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud);
+    float resolution() const;
+    float map_width() const;
+    uint size_num() const;
 
 private:
-    bool enable_info_ = true;
-
-public:
-    float grid_width_;
-    float resolution_;
-    float lidar_blind_;
-    float height_wight_;
-    float ground_height_;
-    int grid_number_;
+    RMCS_INITIALIZE_LOGGER("rmcs-map");
 };
+
+} // namespace rmcs
