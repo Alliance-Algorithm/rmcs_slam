@@ -5,6 +5,8 @@
 
 #include <opencv2/opencv.hpp>
 
+namespace rmcs {
+
 static inline void make_gradient_map(cv::Mat& origin) {
     static auto mat_gradient_x = origin.clone();
     static auto mat_gradient_y = origin.clone();
@@ -53,7 +55,7 @@ static inline void make_gradient_map(cv::Mat& origin) {
     cv::addWeighted(mat_gradient_x, 0.5, mat_gradient_y, 0.5, 0, origin);
 }
 
-void filter::handle(type::NodeMap& node_map) {
+void filter_map(ObstacleMap& node_map) {
     static const auto gradient         = param::get<bool>("filter.gradient");
     static const auto threshold        = param::get<int>("filter.threshold");
     static const auto pre_dilate_size  = param::get<int>("filter.pre_dilate_size");
@@ -63,25 +65,27 @@ void filter::handle(type::NodeMap& node_map) {
     static const auto dilate_size      = param::get<int>("filter.dilate_size");
 
     auto mat =
-        cv::Mat(static_cast<int>(node_map.width()), static_cast<int>(node_map.length()), CV_8UC1);
+        cv::Mat(static_cast<int>(node_map.width()), static_cast<int>(node_map.width()), CV_8UC1);
 
     auto element = cv::Mat();
 
-    for (const auto node : *node_map)
-        mat.at<int8_t>(node.x, node.y) = node.value;
+    for (auto x = 0; x < node_map.width(); x++)
+        for (auto y = 0; y < node_map.width(); y++) {
+            mat.at<int8_t>(x, y) = node_map(x, y).value;
+        }
 
     // dilate
-    if (pre_dilate_size != 0) {
+    if (pre_dilate_size != 0 && pre_dilate_times != 0) {
         element = cv::getStructuringElement(
             cv::MORPH_ELLIPSE, cv::Size(pre_dilate_size, pre_dilate_size), cv::Point(-1, -1));
-        cv::dilate(mat, mat, element, cv::Point(-1, -1), pre_dilate_times);
+        cv::erode(mat, mat, element, cv::Point(-1, -1), pre_dilate_times);
     }
 
     // close
-    if (pre_close_size != 0) {
+    if (pre_close_size != 0 && pre_close_times != 0) {
         element = cv::getStructuringElement(
             cv::MORPH_ELLIPSE, cv::Size(pre_close_size, pre_close_size), cv::Point(-1, -1));
-        cv::morphologyEx(mat, mat, cv::MORPH_CLOSE, element, cv::Point(-1, -1), pre_close_times);
+        cv::morphologyEx(mat, mat, cv::MORPH_OPEN, element, cv::Point(-1, -1), pre_close_times);
     }
 
     // gradient
@@ -91,16 +95,19 @@ void filter::handle(type::NodeMap& node_map) {
     // dilate
     if (dilate_size != 0) {
         element = getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(dilate_size, dilate_size));
-        cv::dilate(mat, mat, element);
+        cv::erode(mat, mat, element);
     }
 
     // range
-    mat.forEach<uint8_t>([](uint8_t& pixel, const int* position) {
-        pixel = static_cast<uint8_t>(pixel < threshold ? 0 : pixel);
-        pixel = static_cast<uint8_t>(pixel > 100 ? 100 : pixel);
-    });
+    // mat.forEach<uint8_t>([](uint8_t& pixel, const int* position) {
+    //     pixel = static_cast<uint8_t>(pixel < threshold ? 0 : pixel);
+    //     pixel = static_cast<uint8_t>(pixel > 100 ? 100 : pixel);
+    // });
 
-    for (auto& node : *node_map) {
-        node.value = mat.at<int8_t>(node.x, node.y);
-    }
+    for (auto x = 0; x < node_map.width(); x++)
+        for (auto y = 0; y < node_map.width(); y++) {
+            node_map(x, y).value = mat.at<int8_t>(x, y);
+        }
 }
+
+} // namespace rmcs

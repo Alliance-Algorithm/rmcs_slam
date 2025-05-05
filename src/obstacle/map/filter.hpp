@@ -3,6 +3,8 @@
 #include "node.hpp"
 #include <opencv2/core/mat.hpp>
 
-namespace filter {
-void handle(type::NodeMap& node_map);
-} // namespace filter
+namespace rmcs {
+
+void filter_map(ObstacleMap& node_map);
+
+} // namespace rmcs
