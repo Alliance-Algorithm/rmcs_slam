@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include <Eigen/Dense>
@@ -13,10 +14,22 @@ struct ObstacleMap {
 public:
     /// @note 当 node_height 为 -1 时，UNKNOWN
     struct Node {
-        std::size_t points{0};
         int8_t value{-1};
-        float max{std::numeric_limits<float>::lowest()};
-        float min{std::numeric_limits<float>::infinity()};
+
+        // 高度表，0 -> 100 对应 0 -> 1 m
+        std::unordered_set<uint8_t> height_table;
+        std::size_t height_table_size() const { return height_table.size(); }
+        void update_height_table(double height) {
+            const auto get_height_value = [](double h) {
+                return static_cast<uint8_t>(std::clamp(h, 0., 1.) * 100);
+            };
+            const auto key = get_height_value(height);
+            height_table.insert(key);
+        }
+        double maximum_height_range() const { //
+            const auto [min, max] = std::minmax_element(height_table.begin(), height_table.end());
+            return static_cast<double>(*max - *min) / 100.;
+        }
     };
     using NodesMatrix = std::vector<std::vector<Node>>;
 

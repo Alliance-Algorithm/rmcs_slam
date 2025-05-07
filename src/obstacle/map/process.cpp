@@ -95,23 +95,20 @@ std::unique_ptr<ObstacleMap>
         const auto x = f(point.x), y = f(point.y);
         visited_node.insert(std::make_pair(x, y));
 
-        auto& node = obstacle_map(x, y);
-        node.points += 1;
-        node.max = std::max(node.max, point.z);
-        node.min = std::min(node.min, point.z);
+        obstacle_map(x, y).update_height_table(point.z);
     }
     // 二次更新，加载障碍物信息
     for (const auto [x, y] : visited_node) {
         auto& node = obstacle_map(x, y);
-        if (node.points < pimpl->points_limit)
+        if (node.height_table_size() < pimpl->points_limit)
             continue;
-        if (node.max - node.min < pimpl->height_limit)
+        if (node.maximum_height_range() < pimpl->height_limit)
             continue;
         obstacle_map.update_node(x, y, 100);
     }
     // 三次更新，作可行域射线投射
     filter_map(obstacle_map);
-    obstacle_map.ray_cast_with_infinty_avaliable();
+    obstacle_map.ray_cast_with_infinty_unknown();
 
     return std::make_unique<ObstacleMap>(std::move(obstacle_map));
 }

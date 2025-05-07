@@ -1,4 +1,5 @@
 #pragma once
+#include "util/logger.hpp"
 
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -26,15 +27,12 @@ public:
     MapNode& operator=(const MapNode&) = delete;
 
 private:
+    RMCS_INITIALIZE_LOGGER("rmcs-map");
+
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 
 private:
-    // @brief publish the transform between lidar link and map link
-    // @note lidar: name.frame.lidar
-    // @note map: name.frame.map
-    void publish_static_transform();
-
     // @brief handle the pcl type pointcloud
     void pointcloud_process(
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,

@@ -10,16 +10,24 @@ rmcs_slam:
       enable: true
       lidar_topic: "/livox/lidar_192_168_1_120"
       imu_topic: "/livox/imu_192_168_1_120"
+      # lidar_topic: "/livox/lidar"
+      # imu_topic: "/livox/imu"
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
       x: +0.09216
       y: +0.08425
       z: +0.2800
+      # x: 0.0
+      # y: 0.0
+      # z: 0.6
       # 描述了雷达坐标系如何旋转到底盘坐标系
       # 单位是度，浮点数
       yaw: -49.7
       pitch: 0.0
       roll: -50.0
+      # yaw: 0.0
+      # pitch: 180.0
+      # roll: 0.0
 
     secondary_lidar:
       enable: true

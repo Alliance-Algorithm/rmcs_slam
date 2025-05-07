@@ -13,7 +13,7 @@ struct Segmentation::Impl {
     std::shared_ptr<PointCloud> source;
 
     double limit_distance              = 10.0;
-    double limit_max_height            = 1.0;
+    double limit_max_height            = 2.0;
     double segmentation_point_distance = 0.01;
     pcl::SACSegmentation<PointCloud::PointType> segmentation;
 
@@ -74,6 +74,7 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
     pass_through.setFilterFieldName("z");
     pass_through.setFilterLimits(-1, float(param::get<double>("segmentation.ground_height")));
 
+    // 只留下地面附近的点云作为分割的输入
     auto pointcloud_removed_xyz = std::make_shared<PointCloud>();
     auto indices_removed_xyz    = std::make_shared<pcl::PointIndices>();
     pass_through.filter(*pointcloud_removed_xyz);
@@ -84,6 +85,7 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
     pimpl->segmentation.setInputCloud(pointcloud_removed_xyz);
     pimpl->segmentation.segment(*plane_points, *coefficients);
 
+    // 把分割后的点云从最初只限制的大范围的场景点云中提出，所以需要二次映射序列
     // 重新映射点的序列，由于分割前的点云已经经过了处理，我们需要保留一份处理过的点云的序列
     // 然后从序列中取出分割的序列，再映射回原点云，获取足够完美的分割地图
     auto indices_original = std::make_shared<pcl::PointIndices>();
