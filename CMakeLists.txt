@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.17)
 project(rmcs_slam)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -61,7 +61,6 @@ find_package(rosidl_default_generators REQUIRED)
 # 第三方依赖
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(nanoflann REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io)
 
 # fast-gicp 构建

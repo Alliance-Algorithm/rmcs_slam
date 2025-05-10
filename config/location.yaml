@@ -8,13 +8,19 @@ rmcs_location:
       # 经过重定位校准的位姿
       robot_pose: "/rmcs_location/pose"
 
+    link:
+      # 里程计的初始点坐标系
+      slam_init: "lidar_init"
+      # 纠正后的世界系，由给定初始位姿或者地图配准结果决定
+      world: "world"
+
     enable:
       # 初始重定位，在裁判系统自检时进行
       # 要求初始旋转解比较好
-      relocation_initial: false
+      relocalization_initial: true
       # 运行过程中丢失定位后进行重定位
       # 初始解为发散前的位姿
-      relocation_automaic: false
+      relocalization_automaic: true
 
     registration:
       # 粗配准的最大迭代次数，包含对旋转解的穷举
@@ -41,6 +47,25 @@ rmcs_location:
         mean_k: 50
         # 判断离群点的倍数判据，大于以下倍数标准差的点即为离群
         stddev_mul_thresh: 0.5
+
+    initial_pose:
+      translation:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+      orientation:
+        w: 1.0
+        x: 0.0
+        y: 0.0
+        z: 0.0
+
+    runtime:
+      minimum_x: -05.0
+      minimum_y: -08.0
+      minimum_z: -00.5
+      maximum_x: +25.0
+      maximum_y: +08.0
+      maximum_z: +01.0
 
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd

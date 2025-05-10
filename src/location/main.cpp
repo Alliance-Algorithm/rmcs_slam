@@ -1,4 +1,5 @@
 #include "registration/engine.hpp"
+#include "runtime/runtime.hpp"
 #include "util/logger.hpp"
 #include "util/node.hpp"
 #include "util/parameter.hpp"
@@ -14,11 +15,27 @@
 
 using namespace rmcs;
 
+int main(int argc, char* argv[]) {
+    rclcpp::init(argc, argv);
+
+    struct Node : rclcpp::Node {
+        Runtime runtime{};
+
+        explicit Node()
+            : rclcpp::Node("rmcs_location", util::NodeOptions{}) {
+            runtime.initialize(*this);
+        }
+    };
+    rclcpp::spin(std::make_shared<Node>());
+
+    rclcpp::shutdown();
+}
+
 struct {
     RMCS_INITIALIZE_LOGGER("debug");
 } debug;
 
-auto main(int argc, char** argv) -> int {
+auto main_localization(int argc, char** argv) -> int {
     using Point      = pcl::PointXYZ;
     using PointCloud = pcl::PointCloud<Point>;
 

@@ -18,7 +18,10 @@ public:
 
         // 高度表，0 -> 100 对应 0 -> 1 m
         std::unordered_set<uint8_t> height_table;
-        std::size_t height_table_size() const { return height_table.size(); }
+
+        std::size_t height_table_size() const { //
+            return height_table.size();
+        }
         void update_height_table(double height) {
             const auto get_height_value = [](double h) {
                 return static_cast<uint8_t>(std::clamp(h, 0., 1.) * 100);
@@ -26,7 +29,7 @@ public:
             const auto key = get_height_value(height);
             height_table.insert(key);
         }
-        double maximum_height_range() const { //
+        double maximum_height_range() const {
             const auto [min, max] = std::minmax_element(height_table.begin(), height_table.end());
             return static_cast<double>(*max - *min) / 100.;
         }
@@ -175,62 +178,3 @@ private:
 };
 
 } // namespace rmcs
-
-namespace type {
-
-enum class NodeType {
-    NONE,
-    BLOCK,
-    USED,
-    AVAILABLE,
-};
-
-struct Node {
-    int x;
-    int y;
-    float height{0};
-    int8_t value;
-    NodeType type;
-};
-
-class NodeMap {
-public:
-    NodeMap(size_t width, size_t length)
-        : width_(width)
-        , length_(length) {
-        reset();
-    }
-
-    auto& operator()(size_t x, size_t y) {
-        assert(x < width_);
-        assert(y < length_);
-
-        return data_[x + y * width_];
-    }
-
-    auto& operator*() { return data_; }
-
-    [[nodiscard]] size_t width() const { return width_; }
-
-    [[nodiscard]] size_t length() const { return length_; }
-
-    void reset() {
-        data_.resize(length_ * width_);
-        for (auto x = 0; x < width_; x++)
-            for (auto y = 0; y < length_; y++) {
-                auto& node  = data_[x + y * width_];
-                node.type   = type::NodeType::NONE;
-                node.height = -1;
-                node.value  = -1;
-                node.x      = x;
-                node.y      = y;
-            }
-    }
-
-private:
-    std::vector<Node> data_;
-    size_t width_;
-    size_t length_;
-};
-
-} // namespace type
