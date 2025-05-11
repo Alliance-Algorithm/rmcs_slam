@@ -1,8 +1,16 @@
 rmcs_location:
   ros__parameters:
+    # 重定位所用的地图，地图原点需要为哨兵导航的原点
+    # 格式为 pcd
+    # 确保地图的位姿是正确的，地板与 xy 平面重合
+    map_path: "/workspaces/RMCS/develop_ws/pcd/battlefiled.pcd"
+    test_path: "/workspaces/RMCS/develop_ws/pcd/1716207380.pcd"
+
     subscription:
       # 里程计的位姿发布，基于重定位校准后的变换将以下面的位姿为基础
       slam_pose: "/rmcs_slam/pose"
+      # 用于配准的点云
+      pointcloud: "/rmcs_slam/constructed_map"
 
     publish:
       # 经过重定位校准的位姿
@@ -10,7 +18,7 @@ rmcs_location:
 
     link:
       # 里程计的初始点坐标系
-      slam_init: "lidar_init"
+      slam: "lidar_init"
       # 纠正后的世界系，由给定初始位姿或者地图配准结果决定
       world: "world"
 
@@ -26,10 +34,12 @@ rmcs_location:
       direct_start: true
 
     registration:
+      # 进行配准的点云数量
+      receive_size: 5000
       # 粗配准的最大迭代次数，包含对旋转解的穷举
-      coarse_iterations: 50
+      coarse_iterations: 100
       # 精配准的最大迭代次数
-      precise_iterations: 100
+      precise_iterations: 500
       # 迭代中的最大距离限制，超过此距离的解被认定为无效解
       distance_threshold: 5.0
       # 用于求解的线程数，配准开销挺大的
@@ -53,8 +63,8 @@ rmcs_location:
 
     initial_pose:
       translation:
-        x: 0.0
-        y: 0.0
+        x: 1.0
+        y: 1.0
         z: 0.0
       orientation:
         w: 1.0
@@ -69,9 +79,3 @@ rmcs_location:
       maximum_x: +25.0
       maximum_y: +08.0
       maximum_z: +01.0
-
-    # 重定位所用的地图，地图原点需要为哨兵导航的原点
-    # 格式为 pcd
-    # 确保地图的位姿是正确的，地板与 xy 平面重合
-    map_path: "/workspaces/RMCS/develop_ws/pcd/battlefiled.pcd"
-    test_path: "/workspaces/RMCS/develop_ws/pcd/1716207380.pcd"

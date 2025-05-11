@@ -24,7 +24,16 @@ def generate_launch_description():
         parameters= [[FindPackageShare("rmcs_slam"), "/config", "/obstacle.yaml"]],
         output="log",
     )
-    launch.add_action(obstacle)
+    # launch.add_action(obstacle)
+
+    # 初始化与丢失重定位，及位姿转换处理
+    location = Node(
+        package="rmcs_slam",
+        executable="location",
+        parameters= [[FindPackageShare("rmcs_slam"), "/config", "/location.yaml"]],
+        output="log",
+    )
+    launch.add_action(location)
 
     # SLAM 节点，单独进程
     slam = Node(

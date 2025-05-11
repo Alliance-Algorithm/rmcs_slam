@@ -34,7 +34,7 @@ public:
 };
 namespace util {
 
-void livox_to_pcl(
+inline void livox_to_pcl(
     const std::vector<livox_ros_driver2::msg::CustomPoint>& livox,
     pcl::PointCloud<pcl::PointXYZ>& pcl) {
     for (const auto point : livox)

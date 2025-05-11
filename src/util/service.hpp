@@ -6,8 +6,8 @@
 
 namespace rmcs::util {
 
-#define TRIGGER_CALLBACK                                                \
-    [this](                                                             \
+#define TRIGGER_CALLBACK(...)                                           \
+    [__VA_ARGS__](                                                      \
         const std_srvs::srv::Trigger::Request::ConstSharedPtr& request, \
         const std_srvs::srv::Trigger::Response::SharedPtr& response)
 
@@ -28,6 +28,7 @@ struct service {
         }
     };
     struct rmcs_slam {
+        // 发送该请求后将阻塞等待结果
         static inline void reset(rclcpp::Node& node, const TriggerCallback& callback) {
             trigger(node, "/rmcs_slam/reset", callback);
         }

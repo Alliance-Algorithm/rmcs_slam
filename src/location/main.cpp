@@ -15,22 +15,6 @@
 
 using namespace rmcs;
 
-int main(int argc, char* argv[]) {
-    rclcpp::init(argc, argv);
-
-    struct Node : rclcpp::Node {
-        Runtime runtime{};
-
-        explicit Node()
-            : rclcpp::Node("rmcs_location", util::NodeOptions{}) {
-            runtime.initialize(*this);
-        }
-    };
-    rclcpp::spin(std::make_shared<Node>());
-
-    rclcpp::shutdown();
-}
-
 struct {
     RMCS_INITIALIZE_LOGGER("debug");
 } debug;
@@ -93,4 +77,22 @@ auto main_localization(int argc, char** argv) -> int {
 
     rclcpp::shutdown();
     return 0;
+}
+
+int main(int argc, char* argv[]) {
+    main_localization(argc, argv);
+
+    rclcpp::init(argc, argv);
+
+    struct Node : rclcpp::Node {
+        Runtime runtime{};
+
+        explicit Node()
+            : rclcpp::Node("rmcs_location", util::NodeOptions{}) {
+            runtime.initialize(*this);
+        }
+    };
+    rclcpp::spin(std::make_shared<Node>());
+
+    rclcpp::shutdown();
 }
