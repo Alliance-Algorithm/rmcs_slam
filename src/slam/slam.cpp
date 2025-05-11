@@ -78,6 +78,8 @@ struct SLAM::Impl {
         });
         ros_utility.register_map_save_function([this] { save_to_pcd(); });
         ros_utility.register_reset_function([&, this] { reset_slam(node); });
+        ros_utility.register_switch_record_function(
+            [this](bool on) { synthesizer.switch_record(on); });
 
         current_path.header.stamp    = node.get_clock()->now();
         current_path.header.frame_id = "lidar_init";

@@ -56,6 +56,8 @@ public:
     void register_update_function(const std::function<void(void)>& fun);
 
     void register_publish_map_function(const std::function<void(void)>& fun);
+
+    void register_switch_record_function(const std::function<void(bool)>& fun);
 };
 
 } // namespace rmcs

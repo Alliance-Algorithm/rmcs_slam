@@ -41,6 +41,7 @@ struct Runtime::Impl {
     bool enable_record;
     bool enable_initize;
     bool enable_relocalize;
+    bool enable_direct_start;
 
     bool map_availiable;
 
@@ -67,8 +68,7 @@ struct Runtime::Impl {
     void initialize(rclcpp::Node& node) {
         registration.initialize(node);
 
-        const auto message =
-            util::colored(util::ansi::kForegroundGreen, "rmcs-location runtime initializing now");
+        const auto message = util::title_text("rmcs-location runtime initializing now");
         rclcpp_info(message.c_str());
 
         const auto p = util::quick_paramtetr_reader{node};
@@ -93,8 +93,9 @@ struct Runtime::Impl {
 
         initial_pose = initial_translation * initial_orientation;
 
-        enable_initize    = p("enable.relocalization_initial", bool{});
-        enable_relocalize = p("enable.relocalization_automaic", bool{});
+        enable_initize      = p("enable.relocalization_initial", bool{});
+        enable_relocalize   = p("enable.relocalization_automaic", bool{});
+        enable_direct_start = p("enable.direct_start", bool{});
         rclcpp_info("initialize pose: %d, relocalization: %d", enable_initize, enable_relocalize);
 
         if (enable_initize || enable_relocalize) {

@@ -92,11 +92,15 @@ inline auto colored(const char* const color, const std::string& text) {
     return std::string{color + text + ansi::kReset};
 }
 
-inline auto error(const std::string& text) {
+inline auto error_text(const std::string& text) {
     return std::string{ansi::kForegroundBrightRed + text + ansi::kReset};
 }
 
-inline auto runtime_error(const std::string& text) { return std::runtime_error{error(text)}; }
+inline auto title_text(const std::string& text) {
+    return std::string{colored(util::ansi::kForegroundGreen, text)};
+}
+
+inline auto runtime_error(const std::string& text) { return std::runtime_error{error_text(text)}; }
 
 } // namespace rmcs::util
 

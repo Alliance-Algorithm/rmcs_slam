@@ -27,6 +27,8 @@ public:
         const std::function<void(const std::unique_ptr<LivoxMsg>&)>& livox_callback,
         const std::function<void(const std::unique_ptr<ImuMsg>&)>& imu_callback);
 
+    void switch_record(bool on);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> pimpl;

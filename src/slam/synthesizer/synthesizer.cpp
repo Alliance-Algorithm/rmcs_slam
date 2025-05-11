@@ -8,6 +8,7 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <rosbag2_cpp/writer.hpp>
 #include <sensor_msgs/msg/point_cloud2.h>
 
 using namespace rmcs;
@@ -88,13 +89,20 @@ public:
         secondary_context.register_callback(secondary_livox_callback, [](const auto&) {});
     }
 
+    void switch_record(bool on) { //
+        enable_record = on;
+    }
+
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
+
+    rosbag2_cpp::Writer recorder;
 
     std::array<LivoxMsg, 2> secondary_buffer;
     std::atomic<bool> secondary_write_first_buffer;
     bool enable_primary{false};
     bool enable_secondary{false};
+    bool enable_record{false};
 
     /// @brief 单个雷达相关ROS2接口的包装
     struct LidarContext {
@@ -200,3 +208,5 @@ void Synthesizer::register_callback(
     const std::function<void(const std::unique_ptr<ImuMsg>&)>& imu_callback) {
     pimpl->register_callback(livox_callback, imu_callback);
 }
+
+void Synthesizer::switch_record(bool on) { pimpl->switch_record(on); }

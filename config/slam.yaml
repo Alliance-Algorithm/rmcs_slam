@@ -5,6 +5,7 @@ rmcs_slam:
     filter_size_map: 0.5
     cube_side_length: 1000.0
     map_file_path: "scans.pcd"
+    record_path: "/workspaces/RMCS/develop_ws/bag/"
 
     primary_lidar:
       enable: true

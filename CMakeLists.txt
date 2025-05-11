@@ -36,6 +36,7 @@ endif()
 set(dependencies
     rclcpp
     rclcpp_components
+    rosbag2_cpp
     geometry_msgs
     nav_msgs
     sensor_msgs
@@ -48,6 +49,7 @@ set(dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)

@@ -23,6 +23,9 @@ public:
 
     void initialize(rclcpp::Node& node) {
 
+        const auto message = util::title_text("rmcs-location registration initializing now");
+        rclcpp_info(message.c_str());
+
         auto p = util::quick_paramtetr_reader(node);
 
         fast_gicp_engine = std::make_unique<fast_gicp::FastGICP<PointT, PointT>>();

@@ -21,6 +21,9 @@ rmcs_location:
       # 运行过程中丢失定位后进行重定位
       # 初始解为发散前的位姿
       relocalization_automaic: true
+      # 若关闭此选项，系统在 /rmcs_location/initialize 被触发后才运行
+      # 开启时，每次启动直接运行进程，初始重定位
+      direct_start: true
 
     registration:
       # 粗配准的最大迭代次数，包含对旋转解的穷举

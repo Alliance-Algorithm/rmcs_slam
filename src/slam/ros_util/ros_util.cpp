@@ -1,6 +1,7 @@
 #include "ros_util.hpp"
 
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
 using namespace rmcs;
@@ -24,6 +25,9 @@ struct RosUtil::Impl {
 
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_trigger;
     std::function<void(void)> reset_function;
+
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr record_switch;
+    std::function<void(bool)> record_switch_callback;
 
     rclcpp::TimerBase::SharedPtr update_timer;
     std::function<void(void)> update_function;
@@ -76,6 +80,16 @@ struct RosUtil::Impl {
                 reset_function();
                 p2->success = true;
                 p2->message = "ros_util handled";
+            });
+
+        using SwitchRequest  = std_srvs::srv::SetBool::Request::SharedPtr;
+        using SwitchResponse = std_srvs::srv::SetBool::Response::SharedPtr;
+        record_switch        = node.create_service<std_srvs::srv::SetBool>(
+            "/rmcs_slam/switch_record",
+            [this](const SwitchRequest& request, const SwitchResponse& response) {
+                record_switch_callback(request->data);
+                response->success = true;
+                response->message = "ros_util handled";
             });
     }
 };
@@ -142,4 +156,7 @@ void RosUtil::register_update_function(const std::function<void(void)>& fun) {
 }
 void RosUtil::register_publish_map_function(const std::function<void(void)>& fun) {
     pimpl->publish_map_function = fun;
+}
+void RosUtil::register_switch_record_function(const std::function<void(bool)>& fun) {
+    pimpl->record_switch_callback = fun;
 }
