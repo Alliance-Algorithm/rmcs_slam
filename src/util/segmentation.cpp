@@ -1,7 +1,5 @@
 #include "segmentation.hpp"
 
-#include "../ros2/param.hpp"
-
 #include <pcl/common/transforms.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/conditional_removal.h>
@@ -15,15 +13,12 @@ struct Segmentation::Impl {
     double limit_distance              = 10.0;
     double limit_max_height            = 2.0;
     double segmentation_point_distance = 0.01;
+    double ground_height               = 0.2;
     pcl::SACSegmentation<PointCloud::PointType> segmentation;
-
-    void limit_pointcloud_area(const std::shared_ptr<PointCloud>& pointcloud) { }
 };
 
 Segmentation::Segmentation()
     : pimpl(std::make_unique<Impl>()) {
-    pimpl->segmentation_point_distance = param::get<double>("segmentation.point_distance");
-    pimpl->limit_distance              = param::get<double>("grid.grid_width");
 
     auto& segmentation = pimpl->segmentation;
     segmentation.setOptimizeCoefficients(true);
@@ -72,7 +67,7 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
     auto pass_through = pcl::PassThrough<PointCloud::PointType> {};
     pass_through.setInputCloud(pointcloud_removed_xy);
     pass_through.setFilterFieldName("z");
-    pass_through.setFilterLimits(-1, float(param::get<double>("segmentation.ground_height")));
+    pass_through.setFilterLimits(-1, static_cast<float>(pimpl->ground_height));
 
     // 只留下地面附近的点云作为分割的输入
     auto pointcloud_removed_xyz = std::make_shared<PointCloud>();
@@ -104,3 +99,11 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
 
     return output;
 }
+
+void Segmentation::set_limit_distance(double v) { pimpl->limit_distance = v; }
+
+void Segmentation::set_limit_max_height(double v) { pimpl->limit_max_height = v; }
+
+void Segmentation::set_distance_threshold(double v) { pimpl->segmentation_point_distance = v; }
+
+void Segmentation::set_ground_max_height(double v) { pimpl->ground_height = v; }

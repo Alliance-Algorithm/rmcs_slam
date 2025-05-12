@@ -37,7 +37,7 @@ rmcs_location:
       # 进行配准的点云数量
       receive_size: 5000
       # 初始化位姿提取原始地图点云的半径
-      initial_map_radius: 15.0
+      initial_map_radius: 25.0
       # 粗配准的最大迭代次数，包含对旋转解的穷举
       coarse_iterations: 50
       # 精配准的最大迭代次数

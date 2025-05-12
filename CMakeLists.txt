@@ -27,12 +27,9 @@ find_package(OpenMP QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 
-# 去除 PCL 相关警告
-if(POLICY CMP0074)
-    cmake_policy(SET CMP0074 NEW)
-endif()
 
 # ROS2 相关依赖
+find_package(ament_cmake REQUIRED)
 set(dependencies
     rclcpp
     rclcpp_components
@@ -45,25 +42,21 @@ set(dependencies
     pcl_ros
     pcl_conversions
     livox_ros_driver2
+    rosidl_default_generators
 )
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rclcpp_components REQUIRED)
-find_package(rosbag2_cpp REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
-find_package(pcl_ros REQUIRED)
-find_package(pcl_conversions REQUIRED)
-find_package(livox_ros_driver2 REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
+foreach(dependency ${dependencies})
+    find_package(${dependency} REQUIRED)
+endforeach()
+
+# 去除 PCL 相关警告
+if(POLICY CMP0074)
+    cmake_policy(SET CMP0074 NEW)
+endif()
 
 # 第三方依赖
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common io)
+find_package(OpenCV REQUIRED COMPONENTS imgproc)
+find_package(PCL REQUIRED COMPONENTS common io segmentation filters)
 
 # fast-gicp 构建
 add_subdirectory(src/third-party/fast_gicp)
@@ -81,6 +74,23 @@ rosidl_generate_interfaces(
 )
 ament_export_dependencies(
     rosidl_default_runtime
+)
+
+# util 工具静态库构建
+file(GLOB_RECURSE UTIL_SRC CONFIGURE_DEPENDS src/util/*.cpp)
+add_library(
+    util STATIC
+    ${UTIL_SRC}
+)
+target_link_directories(
+    util PRIVATE
+    ${PCL_INCLUDE_DIRS}
+)
+target_link_libraries(
+    util PRIVATE
+    pcl_common
+    pcl_segmentation
+    pcl_filters
 )
 
 # rmcs-slam 进程
@@ -106,7 +116,8 @@ rosidl_get_typesupport_target(
 )
 target_link_libraries(
     slam
-    ${PCL_LIBRARIES}
+    pcl_common
+    pcl_io
     ${cpp_typesupport_target}
 )
 
@@ -122,7 +133,9 @@ ament_target_dependencies(
 )
 target_link_libraries(
     obstacle
-    ${PCL_LIBRARIES}
+    pcl_common
+    pcl_segmentation
+    pcl_filters
     ${OpenCV_LIBRARIES}
 )
 
@@ -138,8 +151,11 @@ ament_target_dependencies(
 )
 target_link_libraries(
     location
+    util
     fast_gicp
-    ${PCL_LIBRARIES}
+    pcl_io
+    pcl_common
+    pcl_filters
     ${OpenCV_LIBRARIES}
 )
 

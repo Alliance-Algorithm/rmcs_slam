@@ -2,8 +2,7 @@
 #include "node.hpp"
 
 #include "../ros2/param.hpp"
-
-#include <opencv2/opencv.hpp>
+#include <opencv2/imgproc.hpp>
 
 namespace rmcs {
 
@@ -89,8 +88,8 @@ void filter_map(ObstacleMap& node_map) {
     }
 
     // gradient
-    if (gradient)
-        make_gradient_map(mat);
+    // 疑似再也不需要梯度
+    // if (gradient) make_gradient_map(mat);
 
     // dilate
     if (dilate_size != 0) {

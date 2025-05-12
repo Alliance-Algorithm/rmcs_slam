@@ -15,7 +15,7 @@ def generate_launch_description():
             [FindPackageShare("livox_ros_driver2"), "/launch", "/msg_MID360_launch.py"]
         )
     )
-    # launch.add_action(lidar)
+    launch.add_action(lidar)
 
     # 障碍地图生成进程
     obstacle = Node(
@@ -24,7 +24,7 @@ def generate_launch_description():
         parameters= [[FindPackageShare("rmcs_slam"), "/config", "/obstacle.yaml"]],
         output="log",
     )
-    # launch.add_action(obstacle)
+    launch.add_action(obstacle)
 
     # 初始化与丢失重定位，及位姿转换处理
     location = Node(

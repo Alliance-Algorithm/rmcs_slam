@@ -3,7 +3,7 @@
 #include "util/convert.hpp"
 #include "util/logger.hpp"
 #include "util/parameter.hpp"
-#include "util/pointcloud.hpp"
+#include "util/segmentation.hpp"
 #include "util/service.hpp"
 
 #include <Eigen/Eigen>
@@ -32,7 +32,9 @@ struct Runtime::Impl {
 
     void initialize(rclcpp::Node& node) {
         registration.initialize(node);
+
         const auto p = util::quick_paramtetr_reader { node };
+
         const auto message = util::title_text("rmcs-location runtime initializing now");
         rclcpp_info(message.c_str());
 
@@ -54,17 +56,17 @@ struct Runtime::Impl {
 
         initial_pose = initial_translation * initial_orientation;
 
-        enable_initize = p("enable.relocalization_initial", bool {});
-        enable_relocalize = p("enable.relocalization_automaic", bool {});
+        enable_initize      = p("enable.relocalization_initial", bool {});
+        enable_relocalize   = p("enable.relocalization_automaic", bool {});
         enable_direct_start = p("enable.direct_start", bool {});
         rclcpp_info("initialize pose: %d, relocalization: %d", enable_initize, enable_relocalize);
 
-        receive_size = p("registration.receive_size", std::size_t {});
+        receive_size       = p("registration.receive_size", std::size_t {});
         initial_map_radius = p("registration.initial_map_radius", double {});
         rclcpp_info("registration receive size: %zu", receive_size);
 
         world_link = p("link.world", std::string {});
-        slam_link = p("link.slam", std::string {});
+        slam_link  = p("link.slam", std::string {});
 
         if (enable_initize || enable_relocalize) {
             if (pcl::io::loadPCDFile(p("map_path", std::string {}), *standard_map) == -1) {
@@ -105,18 +107,18 @@ struct Runtime::Impl {
                 auto orientation = Eigen::Quaternionf {};
                 auto translation = Eigen::Translation3f {};
                 util::convert_orientation(msg->pose.orientation, orientation);
-                util::convert_vector3(msg->pose.position, translation);
-
-                auto transformed = Eigen::Isometry3f { initial_pose * translation * orientation };
-                auto transformed_orientation = Eigen::Quaternionf { transformed.rotation() };
-                auto transformed_translation = Eigen::Translation3f { transformed.translation() };
+                util::convert_translation(msg->pose.position, translation);
 
                 auto posestamped = geometry_msgs::msg::PoseStamped {};
-                util::convert_orientation(transformed_orientation, posestamped.pose.orientation);
-                util::convert_vector3(transformed_translation, posestamped.pose.position);
+                util::convert_orientation(
+                    Eigen::Quaternionf { initial_pose.rotation() * orientation },
+                    posestamped.pose.orientation);
+                util::convert_translation(
+                    Eigen::Translation3f { initial_pose * translation.translation() },
+                    posestamped.pose.position);
 
                 posestamped.header.frame_id = world_link;
-                posestamped.header.stamp = msg->header.stamp;
+                posestamped.header.stamp    = msg->header.stamp;
                 localization_publisher->publish(posestamped);
             });
         rclcpp_info("slam topic: %s", p("subscription.slam_pose", std::string {}).c_str());
@@ -125,7 +127,6 @@ struct Runtime::Impl {
             p("subscription.pointcloud", std::string {}), 10,
             [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
                 if (!is_collecting_pointcloud) return;
-
                 scanning_frame = std::make_shared<PointCloud>();
                 pcl::fromROSMsg(*msg, *scanning_frame);
             });
@@ -137,8 +138,9 @@ struct Runtime::Impl {
         initialize_service = node.create_service<std_srvs::srv::Trigger>(
             service_name, TRIGGER_CALLBACK(&, this) {
                 rclcpp_info("rmcs-location has handled this request");
-                const auto callback
-                    = [&](bool success, const std::string& msg) { response->success = success; };
+                const auto callback = [&](bool success, const std::string& msg) {
+                    response->success = success;
+                };
                 util::service::rmcs_slam::reset(node, callback);
             });
         rclcpp_info("custom reinitialize service ready: %s", service_name);
@@ -150,8 +152,9 @@ struct Runtime::Impl {
         };
         missons[Status::PREPARATION] = [&, this] {
             const auto send_collect_pointcloud_request = [this] {
-                scanning_frame = std::make_shared<PointCloud>();
+                scanning_frame           = std::make_shared<PointCloud>();
                 is_collecting_pointcloud = true;
+                collect_count            = 0;
                 rclcpp_info("prepare to initialize, send request to collect pointcloud");
             };
             const auto collecting_pointcloud_and_initialize = [this] {
@@ -163,13 +166,14 @@ struct Runtime::Impl {
                     is_initializing_location = true;
                 } else {
                     // 点云数量不满足要求，继续收集
-                    rclcpp_info("current pointcloud' size is %zu, continue collecting ...",
-                        scanning_frame->size());
+                    if (collect_count % 4 == 0)
+                        rclcpp_info("current pointcloud' size is %zu, continue collecting ...",
+                            scanning_frame->size());
 
-                    // TODO: 是否会阻塞主线程
                     using namespace std::chrono_literals;
                     rclcpp::sleep_for(1000ms);
                 }
+                collect_count += 1;
             };
 
             // 若未进行初始化
@@ -209,6 +213,7 @@ private:
     RMCS_INITIALIZE_LOGGER("rmcs-location");
 
     Registration registration {};
+    Segmentation segmentation {};
 
     enum class Status {
         NONE_ACTION,
@@ -257,10 +262,11 @@ private:
 
     // 系统运行相关资源
     bool is_collecting_pointcloud = false;
-    bool is_map_availiable = false;
+    bool is_map_availiable        = false;
 
     // PREPARATION
     bool is_initializing_location = false;
+    std::size_t collect_count     = 0;
 
     // RUNTIME
 
@@ -268,25 +274,31 @@ private:
     void update() { missons[runtime_status](); }
 
     std::jthread publish_thread;
+
     void initialize_localization() {
-        auto initial_position = initial_pose.translation();
+        segmentation.set_distance_threshold(0.3);
+        segmentation.set_ground_max_height(0.3);
+        segmentation.set_limit_distance(50);
+        segmentation.set_limit_max_height(10);
+
+        auto initial_position   = initial_pose.translation();
         auto initial_pointcloud = extract_pointcloud(standard_map,
             Point { initial_position.x(), initial_position.y(), initial_position.z() });
 
         rclcpp_info("the size of pointcloud around initial pose: %zu", initial_pointcloud->size());
 
-        pcl::transformPointCloud(*initial_pointcloud, *initial_pointcloud,
-            Eigen::Affine3f { Eigen::Translation3f { 2, -1.5, 0 }
-                * Eigen::AngleAxisf { -0.05 * std::numbers::pi, Eigen::Vector3f::UnitZ() } });
         registration.register_map(initial_pointcloud);
+
+        segmentation.set_input_source(scanning_frame);
+        *scanning_frame = *segmentation.execute();
         registration.register_scan(scanning_frame);
 
         auto aligned = std::make_shared<PointCloud>();
         registration.full_match(aligned, Eigen::Isometry3f { initial_pose });
 
-        auto result = registration.transformation();
+        auto result                = registration.transformation();
         initial_pose.translation() = result.translation();
-        initial_pose.linear() = result.rotation();
+        initial_pose.linear()      = result.rotation();
 
         auto score = registration.fitness_score();
         rclcpp_info("initialize pose over, score: %5.4f", score);
@@ -296,22 +308,7 @@ private:
         rclcpp_info("result t(%4.2f %4.2f %4.2f ) q(%4.2f %4.2f %4.2f %4.2f)", //
             t.x(), t.y(), t.z(), q.w(), q.x(), q.y(), q.z());
 
-        publish_static_transform(initial_pose, slam_link, world_link);
-
-        // TODO: 只是为了测试，记得删掉
-        static auto aligned_scan = *aligned;
-        static auto origin_scan = *scanning_frame;
-        static auto initial_part = *initial_pointcloud;
-        publish_thread = std::jthread { [&](const std::stop_token& token) {
-            while (!token.stop_requested()) {
-                pointcloud_util<0>::publish(initial_part, "registration");
-                pointcloud_util<1>::publish(origin_scan, "registration");
-                pointcloud_util<2>::publish(aligned_scan, "registration");
-
-                using namespace std::chrono_literals;
-                std::this_thread::sleep_for(1s);
-            }
-        } };
+        publish_static_transform(initial_pose.inverse(), slam_link, world_link);
     }
 
     void relocalization() { }
@@ -320,14 +317,15 @@ private:
 
     void publish_static_transform(
         const Eigen::Isometry3f& t, const std::string& link, const std::string& child_link) {
+
         auto stamp = geometry_msgs::msg::TransformStamped {};
         util::convert_orientation(Eigen::Quaternionf { t.rotation() }, stamp.transform.rotation);
-        util::convert_vector3(
+        util::convert_translation(
             Eigen::Translation3f { t.translation() }, stamp.transform.translation);
 
-        stamp.header.stamp = rclcpp::Clock { RCL_SYSTEM_TIME }.now();
+        stamp.header.stamp    = rclcpp::Clock { RCL_SYSTEM_TIME }.now();
         stamp.header.frame_id = link;
-        stamp.child_frame_id = child_link;
+        stamp.child_frame_id  = child_link;
         static_transform_broadcaster->sendTransform(stamp);
 
         rclcpp_info("publish static transform from %s to %s", link.c_str(), child_link.c_str());
@@ -338,7 +336,7 @@ private:
         auto flann_kd_tree = pcl::KdTreeFLANN<Point> {};
         flann_kd_tree.setInputCloud(pointcloud);
 
-        auto indecis = pcl::Indices {};
+        auto indecis   = pcl::Indices {};
         auto distances = std::vector<float> {};
         flann_kd_tree.radiusSearch(center, initial_map_radius, indecis, distances);
 
