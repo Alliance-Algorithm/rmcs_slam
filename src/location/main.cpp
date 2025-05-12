@@ -80,7 +80,7 @@ auto main_localization(int argc, char** argv) -> int {
 }
 
 int main(int argc, char* argv[]) {
-    main_localization(argc, argv);
+    // main_localization(argc, argv);
 
     rclcpp::init(argc, argv);
 

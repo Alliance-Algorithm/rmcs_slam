@@ -12,7 +12,7 @@ class Registration final {
     RMCS_PIMPL_DEFINTION(Registration);
 
 public:
-    using PointT      = pcl::PointXYZ;
+    using PointT = pcl::PointXYZ;
     using PointCloudT = pcl::PointCloud<PointT>;
 
     void initialize(rclcpp::Node& node);
@@ -23,14 +23,12 @@ public:
     void full_match(const std::shared_ptr<pcl::PointCloud<PointT>>& align);
     void single_match(const std::shared_ptr<pcl::PointCloud<PointT>>& align);
 
-    void full_match(
-        const std::shared_ptr<pcl::PointCloud<PointT>>& align,
-        const Eigen::Affine3f& transformation);
-    void single_match(
-        const std::shared_ptr<pcl::PointCloud<PointT>>& align,
-        const Eigen::Affine3f& transformation);
+    void full_match(const std::shared_ptr<pcl::PointCloud<PointT>>& align,
+        const Eigen::Isometry3f& transformation);
+    void single_match(const std::shared_ptr<pcl::PointCloud<PointT>>& align,
+        const Eigen::Isometry3f& transformation);
 
     double fitness_score() const;
-    Eigen::Affine3f transformation() const;
+    Eigen::Isometry3f transformation() const;
 };
 } // namespace rmcs

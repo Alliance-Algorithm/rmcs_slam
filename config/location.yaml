@@ -3,8 +3,8 @@ rmcs_location:
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd
     # 确保地图的位姿是正确的，地板与 xy 平面重合
-    map_path: "/workspaces/RMCS/develop_ws/pcd/battlefiled.pcd"
-    test_path: "/workspaces/RMCS/develop_ws/pcd/1716207380.pcd"
+    map_path: "/workspaces/RMCS/develop_ws/pcd/alliance-double-lidar.pcd"
+    test_path: "/workspaces/RMCS/develop_ws/pcd/scans/1716207380.pcd"
 
     subscription:
       # 里程计的位姿发布，基于重定位校准后的变换将以下面的位姿为基础
@@ -36,8 +36,10 @@ rmcs_location:
     registration:
       # 进行配准的点云数量
       receive_size: 5000
+      # 初始化位姿提取原始地图点云的半径
+      initial_map_radius: 15.0
       # 粗配准的最大迭代次数，包含对旋转解的穷举
-      coarse_iterations: 100
+      coarse_iterations: 50
       # 精配准的最大迭代次数
       precise_iterations: 500
       # 迭代中的最大距离限制，超过此距离的解被认定为无效解
@@ -45,7 +47,7 @@ rmcs_location:
       # 用于求解的线程数，配准开销挺大的
       threads: 10
       # 用于粗配准穷举旋转解的步长，单位是度
-      scan_angle: 20
+      scan_angle: 15
       # 优于此值的分数被认定为有效解，即刻停止配准
       # 越小越优质，范围是 0 ~ 1.0
       score_threshold: 0.01
@@ -63,8 +65,8 @@ rmcs_location:
 
     initial_pose:
       translation:
-        x: 1.0
-        y: 1.0
+        x: 0.0
+        y: 0.0
         z: 0.0
       orientation:
         w: 1.0
