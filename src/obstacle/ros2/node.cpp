@@ -58,8 +58,7 @@ struct MapNode::Impl {
 
         process(pointcloud_mixed, header);
 
-        if (++pointcloud_frame_index >= pointcloud_frame_limit)
-            pointcloud_frame_index = 0;
+        if (++pointcloud_frame_index >= pointcloud_frame_limit) pointcloud_frame_index = 0;
     }
 
     void publish_transform(geometry_msgs::msg::TransformStamped& transform) {
@@ -83,17 +82,19 @@ MapNode::MapNode()
     auto pointcloud_type = param::get<std::string>("switch.pointcloud_type");
 
     if (pointcloud_type == "livox") {
-        pimpl->livox_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            param::get<std::string>("name.lidar"), 10,
-            [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
-                livox_subscription_callback(msg);
-            });
+        pimpl->livox_subscription_ =
+            create_subscription<livox_ros_driver2::msg::CustomMsg>(param::get<std::string>("name."
+                                                                                           "lidar"),
+                10, [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
+                    livox_subscription_callback(msg);
+                });
     } else if (pointcloud_type == "pointcloud2") {
-        pimpl->pointcloud_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-            param::get<std::string>("name.lidar"), 10,
-            [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
-                pointcloud2_subscription_callback(msg);
-            });
+        pimpl->pointcloud_subscription_ =
+            create_subscription<sensor_msgs::msg::PointCloud2>(param::get<std::string>("name."
+                                                                                       "lidar"),
+                10, [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
+                    pointcloud2_subscription_callback(msg);
+                });
     }
 
     pimpl->map_frame_id           = param::get<std::string>("name.frame.map");
@@ -109,17 +110,18 @@ MapNode::MapNode()
 
 MapNode::~MapNode() = default;
 
-void MapNode::pointcloud_process(
-    const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
+void MapNode::pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
     const std_msgs::msg::Header& header) {
 
-    auto rotation = Eigen::Quaternionf::Identity();
-    try {
-        auto transform = pimpl->transform_buffer->lookupTransform(
-            "lidar_init", "lidar_link", tf2::TimePointZero);
-        util::convert_orientation(transform.transform.rotation, rotation);
-    } catch (const tf2::TransformException& e) {}
-    pcl::transformPointCloud(*pointcloud, *pointcloud, Eigen::Affine3f{rotation});
+    // NOTE: 放弃使用 odom 系的点云，在 rmcs-location
+    // 重定位完成后，要付出额外开销来纠正这个系，所以直接使用云台系的点云来生成
+    const auto rotation = Eigen::Quaternionf::Identity();
+    // try {
+    //     auto transform = pimpl->transform_buffer->lookupTransform(
+    //         "lidar_init", "lidar_link", tf2::TimePointZero);
+    //     util::convert_orientation(transform.transform.rotation, rotation);
+    // } catch (const tf2::TransformException& e) {}
+    // pcl::transformPointCloud(*pointcloud, *pointcloud, Eigen::Affine3f{rotation});
 
     pimpl->segmentation.set_input_source(pointcloud);
     auto segmentation_part = pimpl->segmentation.execute();
@@ -132,7 +134,7 @@ void MapNode::pointcloud_process(
     if (pimpl->publish_cloud)
         pimpl->segmentation_publisher->publish(*segmentation_part_pointcloud2);
 
-    auto transform = geometry_msgs::msg::TransformStamped{};
+    auto transform = geometry_msgs::msg::TransformStamped {};
     util::convert_orientation(rotation.inverse(), transform.transform.rotation);
     transform.header.stamp = header.stamp;
     pimpl->publish_transform(transform);
@@ -160,8 +162,7 @@ void MapNode::livox_subscription_callback(
     auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
     livox_to_pcl(msg->points, *pointcloud);
 
-    pimpl->pointcloud_subscription_callback(
-        pointcloud, msg->header,
+    pimpl->pointcloud_subscription_callback(pointcloud, msg->header,
         [this](const auto& msg, const auto& header) { pointcloud_process(msg, header); });
 }
 
@@ -171,7 +172,6 @@ void MapNode::pointcloud2_subscription_callback(
     auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
     pc2_to_pcl(*msg, *pointcloud);
 
-    pimpl->pointcloud_subscription_callback(
-        pointcloud, msg->header,
+    pimpl->pointcloud_subscription_callback(pointcloud, msg->header,
         [this](const auto& msg, const auto& header) { pointcloud_process(msg, header); });
 }

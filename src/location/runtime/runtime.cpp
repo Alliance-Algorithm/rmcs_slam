@@ -21,6 +21,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 #include <cassert>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -29,7 +30,64 @@
 using namespace rmcs;
 
 struct Runtime::Impl {
+private:
+    RMCS_INITIALIZE_LOGGER("rmcs-location");
 
+    Registration registration {};
+    Segmentation segmentation {};
+
+    enum class Status {
+        NONE_ACTION,
+        PREPARATION,
+        RUNTIME,
+        MISSION_SIZE,
+    } runtime_status;
+
+    using Misson = std::function<void()>;
+    std::unordered_map<Status, Misson> missons;
+
+    // ROS2 相关接口
+    std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>> odometer_subscription;
+    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> pointcloud_subscription;
+    std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::PoseStamped>> localization_publisher;
+
+    std::shared_ptr<rclcpp::Service<std_srvs::srv::Trigger>> initialize_service;
+
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
+
+    std::shared_ptr<rclcpp::TimerBase> runtime_timer;
+
+    std::string world_link;
+    std::string slam_link;
+
+    // 系统运行相关资源
+    bool enable_record       = false;
+    bool enable_initialize   = false;
+    bool enable_relocalize   = false;
+    bool enable_direct_start = true;
+
+    bool is_initialized          = false;
+    bool is_map_availiable       = false;
+    bool need_collect_pointcloud = false;
+
+    // 初始位姿，World 系到 SLAM 系的变换
+    Eigen::Isometry3f initial_pose = Eigen::Isometry3f::Identity();
+
+    // 用于配准的点云的最小点云数量
+    std::size_t receive_pointcloud_size = 1000;
+    // 用于配准的地图球形子图半径
+    std::double_t registration_radius = 25.0;
+
+    Eigen::Vector3f position_minimum = { 0, 0, 0 };
+    Eigen::Vector3f position_maximum = { 0, 0, 0 };
+
+    std::shared_ptr<PointCloud> standard_map   = std::make_shared<PointCloud>();
+    std::shared_ptr<PointCloud> scanning_frame = std::make_shared<PointCloud>();
+
+    std::size_t maximum_pose_stamped_deque_size = 100;
+    std::deque<geometry_msgs::msg::PoseStamped> pose_stamped_deque;
+
+public:
     void initialize(rclcpp::Node& node) {
         registration.initialize(node);
 
@@ -40,6 +98,7 @@ struct Runtime::Impl {
 
         /// 运行时相关参数初始化
         ///
+
         auto initial_translation = Eigen::Translation3f {
             p("initial_pose.translation.x", float {}),
             p("initial_pose.translation.y", float {}),
@@ -56,19 +115,21 @@ struct Runtime::Impl {
 
         initial_pose = initial_translation * initial_orientation;
 
-        enable_initize      = p("enable.relocalization_initial", bool {});
+        enable_initialize   = p("enable.relocalization_initial", bool {});
         enable_relocalize   = p("enable.relocalization_automaic", bool {});
         enable_direct_start = p("enable.direct_start", bool {});
-        rclcpp_info("initialize pose: %d, relocalization: %d", enable_initize, enable_relocalize);
+        rclcpp_info(
+            "initialize pose: %d, relocalization: %d", enable_initialize, enable_relocalize);
 
-        receive_size       = p("registration.receive_size", std::size_t {});
-        initial_map_radius = p("registration.initial_map_radius", double {});
-        rclcpp_info("registration receive size: %zu", receive_size);
+        receive_pointcloud_size = p("registration.receive_size", std::size_t {});
+        registration_radius     = p("registration.initial_map_radius", double {});
+        rclcpp_info("registration receive size: %zu", receive_pointcloud_size);
 
         world_link = p("link.world", std::string {});
         slam_link  = p("link.slam", std::string {});
 
-        if (enable_initize || enable_relocalize) {
+        // 需要配准时，读取点云地图
+        if (enable_initialize || enable_relocalize) {
             if (pcl::io::loadPCDFile(p("map_path", std::string {}), *standard_map) == -1) {
                 is_map_availiable = false;
                 rclcpp_warn("can not load pcd file, running without localization");
@@ -78,6 +139,7 @@ struct Runtime::Impl {
                     p("map_path", std::string {}).c_str(), standard_map->size());
             }
         }
+        // 需要运行时检测丢失定位进行重定位时，加载丢失定位的位置判据
         if (enable_relocalize) {
             position_minimum = Eigen::Vector3f {
                 p("runtime.minimum_x", float {}),
@@ -96,6 +158,8 @@ struct Runtime::Impl {
 
         /// ROS2 相关接口资源初始化
         ///
+
+        // 重定位后位姿发布
         localization_publisher = node.create_publisher<geometry_msgs::msg::PoseStamped>(
             p("publish.robot_pose", std::string {}), 10);
         rclcpp_info("pose topic: %s", p("publish.robot_pose", std::string {}).c_str());
@@ -120,13 +184,18 @@ struct Runtime::Impl {
                 posestamped.header.frame_id = world_link;
                 posestamped.header.stamp    = msg->header.stamp;
                 localization_publisher->publish(posestamped);
+
+                pose_stamped_deque.push_back(posestamped);
+                if (pose_stamped_deque.size() >= maximum_pose_stamped_deque_size)
+                    pose_stamped_deque.pop_front();
             });
         rclcpp_info("slam topic: %s", p("subscription.slam_pose", std::string {}).c_str());
 
+        // 接收用于重定位配准的点云，一般是 SLAM 在一定时间内建好的部分地图
         pointcloud_subscription = node.create_subscription<sensor_msgs::msg::PointCloud2>(
             p("subscription.pointcloud", std::string {}), 10,
             [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
-                if (!is_collecting_pointcloud) return;
+                if (!need_collect_pointcloud) return;
                 scanning_frame = std::make_shared<PointCloud>();
                 pcl::fromROSMsg(*msg, *scanning_frame);
             });
@@ -134,67 +203,58 @@ struct Runtime::Impl {
 
         static_transform_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
 
-        constexpr auto service_name { "/rmcs_location/initialize" };
-        initialize_service = node.create_service<std_srvs::srv::Trigger>(
-            service_name, TRIGGER_CALLBACK(&, this) {
-                rclcpp_info("rmcs-location has handled this request");
-                const auto callback = [&](bool success, const std::string& msg) {
-                    response->success = success;
-                };
-                util::service::rmcs_slam::reset(node, callback);
-            });
+        // 用于重启和初始化整个系统的服务，该服务会自动将 SLAM 也重启
+        const auto service_name { "/rmcs_location/initialize" };
+        const auto service_callback = TRIGGER_CALLBACK(&, this) {
+            const auto callback = [&](bool success, const std::string& msg) {
+                if ((response->success = success) == true) {
+                    start_collecting_pointcloud();
+                    entry_mission(Status::PREPARATION);
+                    const auto message = "reset initialized status and relocalize now";
+                    response->message  = message;
+                    rclcpp_info(message);
+                } else {
+                    const auto message = "try to reset slam but failed";
+                    response->message  = message;
+                    rclcpp_info(message);
+                }
+            };
+            util::service::rmcs_slam::reset(node, callback);
+            rclcpp_info("rmcs-location has handled this request");
+        };
+        using Service      = std_srvs::srv::Trigger;
+        initialize_service = node.create_service<Service>(service_name, service_callback);
         rclcpp_info("custom reinitialize service ready: %s", service_name);
 
         /// 运行时任务分配
         ///
+
         missons[Status::NONE_ACTION] = [this] {
             // do something
         };
-        missons[Status::PREPARATION] = [&, this] {
-            const auto send_collect_pointcloud_request = [this] {
-                scanning_frame           = std::make_shared<PointCloud>();
-                is_collecting_pointcloud = true;
-                collect_count            = 0;
-                rclcpp_info("prepare to initialize, send request to collect pointcloud");
-            };
-            const auto collecting_pointcloud_and_initialize = [this] {
-                // 收集到的点云满足配准要求
-                if (scanning_frame && scanning_frame->size() > receive_size) {
-                    initialize_localization();
-                    // 初始化结束
-                    is_collecting_pointcloud = false;
-                    is_initializing_location = true;
-                } else {
-                    // 点云数量不满足要求，继续收集
-                    if (collect_count % 4 == 0)
-                        rclcpp_info("current pointcloud' size is %zu, continue collecting ...",
-                            scanning_frame->size());
-
-                    using namespace std::chrono_literals;
-                    rclcpp::sleep_for(1000ms);
-                }
-                collect_count += 1;
-            };
-
-            // 若未进行初始化
-            if (!is_initializing_location && enable_initize && is_map_availiable) {
-                // 未收集初始点云，收集点云
-                if (!is_collecting_pointcloud) {
-                    send_collect_pointcloud_request();
-                } else {
-                    collecting_pointcloud_and_initialize();
-                }
-            }
-            // 初始化完成阶段，进入 RUNTIME 状态
-            else {
+        missons[Status::PREPARATION] = [this] {
+            // map 不可用，直接进入运行模式
+            if (!is_map_availiable) {
+                rclcpp_info("the map is unavailable, just use initial pose on config");
                 entry_mission(Status::RUNTIME);
+                return;
             }
+            // 不需要初始化或初始化完成，进入运行模式
+            if (!enable_initialize || is_initialized) {
+                entry_mission(Status::RUNTIME);
+                return;
+            }
+            // 未收集初始点云，开始收集
+            if (!need_collect_pointcloud) {
+                start_collecting_pointcloud();
+                return;
+            }
+            // 尝试进行位姿初始化，成功后会将 is_initialized 设置为 true
+            try_relocalization();
         };
         missons[Status::RUNTIME] = [this] {
-            // do something
-        };
-        missons[Status::LOST_LOCATION] = [this] {
-            // do something
+            // 如果不启用运行时检测定位丢失，那没什么需要做的了
+            if (!enable_relocalize) return;
         };
 
         // 确保所有情况被初始化，防呆防傻必备
@@ -203,79 +263,26 @@ struct Runtime::Impl {
         }
 
         publish_static_transform(initial_pose, slam_link, world_link);
-        entry_mission(enable_direct_start ? Status::PREPARATION : Status::RUNTIME);
+        entry_mission(enable_direct_start ? Status::PREPARATION : Status::NONE_ACTION);
 
         using namespace std::chrono_literals;
         runtime_timer = node.create_wall_timer(100ms, [this] { update(); });
     }
 
 private:
-    RMCS_INITIALIZE_LOGGER("rmcs-location");
-
-    Registration registration {};
-    Segmentation segmentation {};
-
-    enum class Status {
-        NONE_ACTION,
-        PREPARATION,
-        RUNTIME,
-        LOST_LOCATION,
-        MISSION_SIZE,
-    } runtime_status;
-
-    using Misson = std::function<void()>;
-    std::unordered_map<Status, Misson> missons;
-
-    bool enable_record;
-    bool enable_initize;
-    bool enable_relocalize;
-    bool enable_direct_start;
-
-    std::size_t receive_size = 1000;
-    double initial_map_radius;
-
-    // 位姿处理相关资源
-    Eigen::Isometry3f initial_solution;
-    Eigen::Isometry3f initial_pose;
-
-    Eigen::Vector3f position_minimum;
-    Eigen::Vector3f position_maximum;
-
-    std::vector<Eigen::Isometry3f> pose_buffer;
-
-    std::shared_ptr<PointCloud> standard_map { std::make_shared<PointCloud>() };
-    std::shared_ptr<PointCloud> scanning_frame { std::make_shared<PointCloud>() };
-
-    // ROS2 相关接口
-    std::shared_ptr<rclcpp::Subscription<geometry_msgs::msg::PoseStamped>> odometer_subscription;
-    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> pointcloud_subscription;
-    std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::PoseStamped>> localization_publisher;
-
-    std::shared_ptr<rclcpp::Service<std_srvs::srv::Trigger>> initialize_service;
-
-    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
-
-    std::shared_ptr<rclcpp::TimerBase> runtime_timer;
-
-    std::string world_link;
-    std::string slam_link;
-
-    // 系统运行相关资源
-    bool is_collecting_pointcloud = false;
-    bool is_map_availiable        = false;
-
-    // PREPARATION
-    bool is_initializing_location = false;
-    std::size_t collect_count     = 0;
-
-    // RUNTIME
-
-private:
+    /// @brief: 更新函数，各个阶段的任务将会在此处执行
     void update() { missons[runtime_status](); }
 
-    std::jthread publish_thread;
+    /// @brief: 进行重定位，初始解是 initial_pose，地图是配置文件传入的地图
+    /// @note: 会对子地图进行点云分割，去除地面，保留有效特征
+    void relocalization() {
+        // 没地图配什么
+        if (!is_map_availiable) {
+            need_collect_pointcloud = false;
+            is_initialized          = true;
+            return;
+        }
 
-    void initialize_localization() {
         segmentation.set_distance_threshold(0.3);
         segmentation.set_ground_max_height(0.3);
         segmentation.set_limit_distance(50);
@@ -309,9 +316,27 @@ private:
             t.x(), t.y(), t.z(), q.w(), q.x(), q.y(), q.z());
 
         publish_static_transform(initial_pose.inverse(), slam_link, world_link);
+
+        is_initialized          = true;
+        need_collect_pointcloud = false;
     }
 
-    void relocalization() { }
+    void try_relocalization() {
+        if (scanning_frame->size() <= receive_pointcloud_size) {
+            rclcpp_info(
+                "current pointcloud' size is %zu, continue collecting ...", scanning_frame->size());
+            using namespace std::chrono_literals;
+            rclcpp::sleep_for(2000ms);
+            return;
+        }
+        relocalization();
+    }
+
+    void start_collecting_pointcloud() {
+        need_collect_pointcloud = true;
+        scanning_frame          = std::make_shared<PointCloud>();
+        rclcpp_info("prepare to initialize, send request to collect pointcloud");
+    }
 
     void entry_mission(Status status) { runtime_status = status; }
 
@@ -338,7 +363,7 @@ private:
 
         auto indecis   = pcl::Indices {};
         auto distances = std::vector<float> {};
-        flann_kd_tree.radiusSearch(center, initial_map_radius, indecis, distances);
+        flann_kd_tree.radiusSearch(center, registration_radius, indecis, distances);
 
         auto search_result = std::make_shared<PointCloud>(indecis.size(), 1);
         for (const auto index : indecis) {

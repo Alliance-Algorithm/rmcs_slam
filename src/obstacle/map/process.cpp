@@ -22,11 +22,10 @@
 using namespace rmcs;
 
 namespace std {
-template <>
-struct hash<std::pair<std::size_t, std::size_t>> {
+template <> struct hash<std::pair<std::size_t, std::size_t>> {
     std::size_t operator()(const std::pair<std::size_t, std::size_t>& p) const {
-        auto h1 = std::hash<std::size_t>{}(p.first);
-        auto h2 = std::hash<std::size_t>{}(p.second);
+        auto h1 = std::hash<std::size_t> {}(p.first);
+        auto h2 = std::hash<std::size_t> {}(p.second);
         return h1 ^ h2;
     }
 };
@@ -52,45 +51,20 @@ struct Process::Impl {
     float map_width;
 };
 
-std::unique_ptr<ObstacleMap>
-    Process::generate_node_map(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud) {
+std::unique_ptr<ObstacleMap> Process::generate_node_map(
+    const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud) {
     using PointType = std::remove_cvref<decltype((*pointcloud)[0])>::type;
-
-    // remove blind points
-    auto inside = std::make_shared<pcl::ConditionOr<PointType>>();
-    inside->addComparison(
-        std::make_shared<const pcl::FieldComparison<PointType>>(
-            "x", pcl::ComparisonOps::LT, -pimpl->lidar_blind / 2.0));
-    inside->addComparison(
-        std::make_shared<const pcl::FieldComparison<PointType>>(
-            "x", pcl::ComparisonOps::GT, +pimpl->lidar_blind / 2.0));
-    inside->addComparison(
-        std::make_shared<const pcl::FieldComparison<PointType>>(
-            "y", pcl::ComparisonOps::LT, -pimpl->lidar_blind / 2.0));
-    inside->addComparison(
-        std::make_shared<const pcl::FieldComparison<PointType>>(
-            "y", pcl::ComparisonOps::GT, +pimpl->lidar_blind / 2.0));
-
-    auto condition = std::make_shared<pcl::ConditionAnd<PointType>>();
-    condition->addCondition(inside);
-
-    auto filter = pcl::ConditionalRemoval<PointType>{};
-    filter.setCondition(condition);
-    filter.setInputCloud(pointcloud);
-
-    auto pointcloud_remove_blind = std::make_shared<pcl::PointCloud<PointType>>();
-    filter.filter(*pointcloud_remove_blind);
 
     // 加载可视域内节点的高度信息
     // 使用过的节点，用于二次更新时减少循环次数
-    auto visited_node = std::unordered_set<std::pair<std::size_t, std::size_t>>{};
+    auto visited_node = std::unordered_set<std::pair<std::size_t, std::size_t>> {};
     // 障碍地图
-    auto obstacle_map = ObstacleMap{pimpl->side_num};
-    for (const auto point : *pointcloud_remove_blind) {
+    auto obstacle_map = ObstacleMap { pimpl->side_num };
+    for (const auto point : *pointcloud) {
         const auto f = [this](float v) -> std::size_t {
             return std::clamp(
                 static_cast<std::size_t>((v + (pimpl->map_width / 2.)) / pimpl->resolution),
-                std::size_t{0}, pimpl->side_num);
+                std::size_t { 0 }, pimpl->side_num);
         };
         const auto x = f(point.x), y = f(point.y);
         visited_node.insert(std::make_pair(x, y));
@@ -100,21 +74,25 @@ std::unique_ptr<ObstacleMap>
     // 二次更新，加载障碍物信息
     for (const auto [x, y] : visited_node) {
         auto& node = obstacle_map(x, y);
-        if (node.height_table_size() < pimpl->points_limit)
-            continue;
-        if (node.maximum_height_range() < pimpl->height_limit)
-            continue;
+        if (node.height_table_size() < pimpl->points_limit) continue;
+        if (node.maximum_height_range() < pimpl->height_limit) continue;
         obstacle_map.update_node(x, y, 100);
     }
+
     // 三次更新，作可行域射线投射
     filter_map(obstacle_map);
     obstacle_map.ray_cast_with_infinty_unknown();
+
+    // 去除盲区
+    auto blind_radius = pimpl->lidar_blind / 2;
+    auto grid_radius  = static_cast<std::size_t>(blind_radius / pimpl->resolution);
+    obstacle_map.fill_center(grid_radius, -1);
 
     return std::make_unique<ObstacleMap>(std::move(obstacle_map));
 }
 
 Process::Process()
-    : pimpl(std::make_unique<Impl>()) {}
+    : pimpl(std::make_unique<Impl>()) { }
 
 Process::~Process() = default;
 

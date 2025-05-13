@@ -39,7 +39,7 @@ rmcs_map:
             resolution: 0.1
             # 栅格地图边长，单位 m
             grid_width: 10.1
-            # 雷达的盲区
+            # 雷达的盲区，球形直径
             lidar_blind: 0.8
             # 有效点数量阈值，出现在网格的点大于该数才视作有效
             points_limit: 5
