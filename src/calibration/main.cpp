@@ -7,7 +7,7 @@ int main(int argc, char* argv[]) {
     using Engine = fast_gicp::FastGICP<Point, Point>;
 
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<rclcpp::Node>();
+    auto node = std::make_shared<rclcpp::Node>("rmcs_calibration");
 
     auto engine = Engine {};
 

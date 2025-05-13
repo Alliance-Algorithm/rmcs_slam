@@ -19,6 +19,8 @@
 using namespace rmcs;
 
 struct MapNode::Impl {
+    RMCS_INITIALIZE_LOGGER("rmcs-map");
+
     using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
 
     // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
@@ -55,13 +57,20 @@ struct MapNode::Impl {
         pointcloud_frame = *pointcloud;
 
         // 将点云变换到 odom 系中，去除多帧点云间的旋转畸变
-        auto rotation = Eigen::Quaternionf::Identity();
+        auto orientation = Eigen::Quaternionf::Identity();
+        auto translation = Eigen::Translation3f::Identity();
         try {
             auto transform =
                 transform_buffer->lookupTransform("lidar_init", "lidar_link", tf2::TimePointZero);
-            util::convert_orientation(transform.transform.rotation, rotation);
-        } catch (const tf2::TransformException& e) { }
-        pcl::transformPointCloud(*pointcloud, *pointcloud, Eigen::Affine3f { rotation });
+            util::convert_orientation(transform.transform.rotation, orientation);
+            util::convert_translation(transform.transform.translation, translation.translation());
+        } catch (const tf2::TransformException& e) {
+            orientation = Eigen::Quaternionf::Identity();
+            translation = Eigen::Translation3f::Identity();
+            rclcpp_warn("%s", e.what());
+        }
+        pcl::transformPointCloud(
+            *pointcloud, *pointcloud, Eigen::Affine3f { translation * orientation });
 
         auto pointcloud_mixed = std::make_shared<PointCloud>();
         for (const auto& frame : pointcloud_frames)
@@ -69,8 +78,8 @@ struct MapNode::Impl {
 
         // 将点云变换回云台系
         auto pointcloud_mixed_yaw_link = std::make_shared<PointCloud>();
-        pcl::transformPointCloud(
-            *pointcloud_mixed, *pointcloud_mixed_yaw_link, Eigen::Affine3f { rotation.inverse() });
+        pcl::transformPointCloud(*pointcloud_mixed, *pointcloud_mixed_yaw_link,
+            Eigen::Affine3f { translation * orientation }.inverse());
 
         process(pointcloud_mixed, header);
 
@@ -97,20 +106,17 @@ MapNode::MapNode()
 
     auto pointcloud_type = param::get<std::string>("switch.pointcloud_type");
 
+    const auto lidar_topic = param::get<std::string>("name.lidar");
     if (pointcloud_type == "livox") {
-        pimpl->livox_subscription_ =
-            create_subscription<livox_ros_driver2::msg::CustomMsg>(param::get<std::string>("name."
-                                                                                           "lidar"),
-                10, [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
-                    livox_subscription_callback(msg);
-                });
+        pimpl->livox_subscription_ = create_subscription<livox_ros_driver2::msg::CustomMsg>(
+            lidar_topic, 10, [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
+                livox_subscription_callback(msg);
+            });
     } else if (pointcloud_type == "pointcloud2") {
-        pimpl->pointcloud_subscription_ =
-            create_subscription<sensor_msgs::msg::PointCloud2>(param::get<std::string>("name."
-                                                                                       "lidar"),
-                10, [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
-                    pointcloud2_subscription_callback(msg);
-                });
+        pimpl->pointcloud_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+            lidar_topic, 10, [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
+                pointcloud2_subscription_callback(msg);
+            });
     }
 
     pimpl->map_frame_id           = param::get<std::string>("name.frame.map");
