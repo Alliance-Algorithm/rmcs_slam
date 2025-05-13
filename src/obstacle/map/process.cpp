@@ -79,14 +79,14 @@ std::unique_ptr<ObstacleMap> Process::generate_node_map(
         obstacle_map.update_node(x, y, 100);
     }
 
-    // 三次更新，作可行域射线投射
-    filter_map(obstacle_map);
-    obstacle_map.ray_cast_with_infinty_unknown();
-
     // 去除盲区
     auto blind_radius = pimpl->lidar_blind / 2;
     auto grid_radius  = static_cast<std::size_t>(blind_radius / pimpl->resolution);
     obstacle_map.fill_center(grid_radius, -1);
+
+    // 三次更新，作可行域射线投射
+    filter_map(obstacle_map);
+    obstacle_map.ray_cast_with_infinty_unknown();
 
     return std::make_unique<ObstacleMap>(std::move(obstacle_map));
 }

@@ -19,6 +19,8 @@
 using namespace rmcs;
 
 struct MapNode::Impl {
+    using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+
     // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
     int pointcloud_frame_limit = 1;
     int pointcloud_frame_index = 0;
@@ -45,16 +47,30 @@ struct MapNode::Impl {
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>&, const std_msgs::msg::Header&)>;
 
     void pointcloud_subscription_callback(
-        const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& msg,
+        const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
         const std_msgs::msg::Header& header, const Callback& process) {
         auto& pointcloud_frame = pointcloud_frames.at(pointcloud_frame_index);
 
         pointcloud_frame.clear();
-        pointcloud_frame = *msg;
+        pointcloud_frame = *pointcloud;
 
-        auto pointcloud_mixed = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+        // 将点云变换到 odom 系中，去除多帧点云间的旋转畸变
+        auto rotation = Eigen::Quaternionf::Identity();
+        try {
+            auto transform =
+                transform_buffer->lookupTransform("lidar_init", "lidar_link", tf2::TimePointZero);
+            util::convert_orientation(transform.transform.rotation, rotation);
+        } catch (const tf2::TransformException& e) { }
+        pcl::transformPointCloud(*pointcloud, *pointcloud, Eigen::Affine3f { rotation });
+
+        auto pointcloud_mixed = std::make_shared<PointCloud>();
         for (const auto& frame : pointcloud_frames)
             *pointcloud_mixed += frame;
+
+        // 将点云变换回云台系
+        auto pointcloud_mixed_yaw_link = std::make_shared<PointCloud>();
+        pcl::transformPointCloud(
+            *pointcloud_mixed, *pointcloud_mixed_yaw_link, Eigen::Affine3f { rotation.inverse() });
 
         process(pointcloud_mixed, header);
 
@@ -106,22 +122,16 @@ MapNode::MapNode()
     pimpl->transform_buffer      = std::make_unique<tf2_ros::Buffer>(get_clock());
     pimpl->transform_listener =
         std::make_unique<tf2_ros::TransformListener>(*pimpl->transform_buffer);
+
+    auto transform         = geometry_msgs::msg::TransformStamped {};
+    transform.header.stamp = get_clock()->now();
+    util::convert_orientation(Eigen::Quaterniond::Identity(), transform.transform.rotation);
 }
 
 MapNode::~MapNode() = default;
 
 void MapNode::pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
     const std_msgs::msg::Header& header) {
-
-    // NOTE: 放弃使用 odom 系的点云，在 rmcs-location
-    // 重定位完成后，要付出额外开销来纠正这个系，所以直接使用云台系的点云来生成
-    const auto rotation = Eigen::Quaternionf::Identity();
-    // try {
-    //     auto transform = pimpl->transform_buffer->lookupTransform(
-    //         "lidar_init", "lidar_link", tf2::TimePointZero);
-    //     util::convert_orientation(transform.transform.rotation, rotation);
-    // } catch (const tf2::TransformException& e) {}
-    // pcl::transformPointCloud(*pointcloud, *pointcloud, Eigen::Affine3f{rotation});
 
     pimpl->segmentation.set_input_source(pointcloud);
     auto segmentation_part = pimpl->segmentation.execute();
@@ -133,11 +143,6 @@ void MapNode::pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::Poin
 
     if (pimpl->publish_cloud)
         pimpl->segmentation_publisher->publish(*segmentation_part_pointcloud2);
-
-    auto transform = geometry_msgs::msg::TransformStamped {};
-    util::convert_orientation(rotation.inverse(), transform.transform.rotation);
-    transform.header.stamp = header.stamp;
-    pimpl->publish_transform(transform);
 
     // generate grid map
     auto grid_map = std::make_shared<nav_msgs::msg::OccupancyGrid>();

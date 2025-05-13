@@ -25,9 +25,9 @@ rmcs_map:
             publish_cloud: true
             publish_test: false
         lidar:
-            # 单帧点云浮动比较大，多帧累积起来虽然响应会低一些，
-            # 但障碍地图会稳定很多
-            livox_frames: 1
+            # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
+            # 以及为纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
+            livox_frames: 4
         segmentation:
             # 点云分割中迭代的最大相邻点的距离
             # 这个距离内的点云被视作统一平面内
@@ -53,7 +53,7 @@ rmcs_map:
             pre_dilate_size: 3
             pre_dilate_times: 1
             # 闭合，拟补激光雷达点云的缺口
-            pre_close_size: 5
+            pre_close_size: 3
             pre_close_times: 1
             # 求梯度，可以借此过滤掉坡
             gradient: false
