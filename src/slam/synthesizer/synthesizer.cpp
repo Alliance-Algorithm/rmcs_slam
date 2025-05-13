@@ -22,7 +22,8 @@ public:
         enable_secondary = p("secondary_lidar.enable", bool {});
         rclcpp_info("primary: %d, secondary: %d", enable_primary, enable_secondary);
 
-        if (!enable_primary) throw std::runtime_error { "at least enable primary lidar" };
+        if (!enable_primary && !enable_secondary)
+            throw util::runtime_error("at least enable one lidar");
 
         const auto initialize_context = [&](LidarContext& context, const std::string& index) {
             const auto lidar_topic = p(index + "_lidar.lidar_topic", std::string { "" });
@@ -56,38 +57,16 @@ public:
         if (enable_secondary) initialize_context(secondary_context, "secondary");
     }
 
-    // 传入的回调理应是 slam 的点云和 IMU 回调
-    void register_callback(const auto& livox_callback, const auto& imu_callback) {
-        if (!enable_secondary) {
-            primary_context.register_callback(livox_callback, imu_callback);
-            return;
+    void register_callback(const auto& update_lidar, const auto& update_imu) {
+        if (enable_primary && enable_secondary)
+            register_callback_without_combination(update_lidar, update_imu);
+        else {
+            primary_context.register_callback(update_lidar, update_imu);
+            secondary_context.register_callback(update_lidar, update_imu);
         }
-
-        rclcpp_info("启用辅助雷达");
-
-        const auto primary_livox_callback = [=, this](const std::unique_ptr<LivoxMsg>& msg) {
-            // 次级雷达会时刻同步点云至缓存，选取一个Free的点云进行合并
-            std::size_t buffer_index =
-                secondary_write_first_buffer.load(std::memory_order::relaxed) ? 1 : 0;
-            auto& secondary_msg = secondary_buffer[buffer_index];
-            for (const auto point : secondary_msg.points)
-                msg->points.push_back(point);
-            msg->point_num = msg->points.size();
-            livox_callback(msg);
-        };
-        const auto secondary_livox_callback = [this](const std::unique_ptr<LivoxMsg>& msg) {
-            auto read_first        = secondary_write_first_buffer.load(std::memory_order::relaxed);
-            std::size_t read_index = read_first ? 0 : 1;
-            secondary_buffer[read_index] = *msg;
-            secondary_write_first_buffer.store(!read_first, std::memory_order::relaxed);
-        };
-        primary_context.register_callback(primary_livox_callback, imu_callback);
-        secondary_context.register_callback(secondary_livox_callback, [](const auto&) { });
     }
 
-    void switch_record(bool on) { //
-        enable_record = on;
-    }
+    void switch_record(bool on) { enable_record = on; }
 
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
@@ -96,6 +75,17 @@ private:
 
     std::array<LivoxMsg, 2> secondary_buffer;
     std::atomic<bool> secondary_write_first_buffer;
+
+    LivoxMsg primary_lidar_message;
+    ImuMsg primary_imu_message;
+    bool is_primary_lidar_reveived = false;
+    bool is_primary_imu_reveived   = false;
+
+    LivoxMsg secondary_lidar_message;
+    ImuMsg secondary_imu_message;
+    bool is_secondary_lidar_received = false;
+    bool is_secondary_imu_received   = false;
+
     bool enable_primary { false };
     bool enable_secondary { false };
     bool enable_record { false };
@@ -185,6 +175,91 @@ private:
         }
 
     } primary_context, secondary_context;
+
+    // 传入的回调理应是 slam 的点云和 IMU 回调
+    // 此方略若使用两个雷达，会造成畸变纠正的劣化
+    void register_callback_with_combination(const auto& update_lidar, const auto& update_imu) {
+        if (!enable_secondary) {
+            primary_context.register_callback(update_lidar, update_imu);
+            return;
+        }
+
+        rclcpp_info("启用辅助雷达");
+
+        const auto primary_livox_callback = [=, this](const std::unique_ptr<LivoxMsg>& msg) {
+            // 次级雷达会时刻同步点云至缓存，选取一个Free的点云进行合并
+            std::size_t buffer_index =
+                secondary_write_first_buffer.load(std::memory_order::relaxed) ? 1 : 0;
+            auto& secondary_msg = secondary_buffer[buffer_index];
+            for (const auto point : secondary_msg.points)
+                msg->points.push_back(point);
+            msg->point_num = msg->points.size();
+            update_lidar(msg);
+        };
+        const auto secondary_livox_callback = [this](const std::unique_ptr<LivoxMsg>& msg) {
+            auto read_first        = secondary_write_first_buffer.load(std::memory_order::relaxed);
+            std::size_t read_index = read_first ? 0 : 1;
+            secondary_buffer[read_index] = *msg;
+            secondary_write_first_buffer.store(!read_first, std::memory_order::relaxed);
+        };
+        primary_context.register_callback(primary_livox_callback, update_imu);
+        secondary_context.register_callback(secondary_livox_callback, [](const auto&) { });
+    }
+
+    void register_callback_without_combination(const auto& update_lidar, const auto& update_imu) {
+        const auto handle_lidar_message = [this, update_lidar] {
+            auto primary_stamp   = rclcpp::Time { primary_lidar_message.header.stamp };
+            auto secondary_stamp = rclcpp::Time { secondary_lidar_message.header.stamp };
+            if (primary_stamp < secondary_stamp) {
+                update_lidar(std::make_unique<LivoxMsg>(primary_lidar_message));
+                update_lidar(std::make_unique<LivoxMsg>(secondary_lidar_message));
+                is_primary_lidar_reveived   = false;
+                is_secondary_lidar_received = false;
+            } else {
+                update_lidar(std::make_unique<LivoxMsg>(secondary_lidar_message));
+                update_lidar(std::make_unique<LivoxMsg>(primary_lidar_message));
+                is_primary_lidar_reveived   = false;
+                is_secondary_lidar_received = false;
+            }
+        };
+        const auto handle_imu_message = [this, update_imu] {
+            auto primary_stamp   = rclcpp::Time { primary_imu_message.header.stamp };
+            auto secondary_stamp = rclcpp::Time { secondary_imu_message.header.stamp };
+            if (primary_stamp < secondary_stamp) {
+                update_imu(std::make_unique<ImuMsg>(primary_imu_message));
+                update_imu(std::make_unique<ImuMsg>(secondary_imu_message));
+                is_primary_imu_reveived   = false;
+                is_secondary_imu_received = false;
+            } else {
+                update_imu(std::make_unique<ImuMsg>(secondary_imu_message));
+                update_imu(std::make_unique<ImuMsg>(primary_imu_message));
+                is_primary_imu_reveived   = false;
+                is_secondary_imu_received = false;
+            }
+        };
+        primary_context.register_callback(
+            [=, this](const std::unique_ptr<LivoxMsg>& msg) {
+                primary_lidar_message     = *msg;
+                is_primary_lidar_reveived = true;
+                if (is_secondary_lidar_received) handle_lidar_message();
+            },
+            [=, this](const std::unique_ptr<ImuMsg>& msg) {
+                primary_imu_message     = *msg;
+                is_primary_imu_reveived = true;
+                if (is_secondary_imu_received) handle_imu_message();
+            });
+        secondary_context.register_callback(
+            [=, this](const std::unique_ptr<LivoxMsg>& msg) {
+                secondary_lidar_message     = *msg;
+                is_secondary_lidar_received = true;
+                if (is_primary_lidar_reveived) handle_lidar_message();
+            },
+            [=, this](const std::unique_ptr<ImuMsg>& msg) {
+                secondary_imu_message     = *msg;
+                is_secondary_imu_received = true;
+                if (is_primary_imu_reveived) handle_imu_message();
+            });
+    }
 };
 
 Synthesizer::Synthesizer()

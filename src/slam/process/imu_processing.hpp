@@ -2,7 +2,6 @@
 
 #include "common/common_lib.hpp"
 #include "common/use_ikfom.hpp"
-#include <common/so3_math.hpp>
 
 #include <cmath>
 #include <csignal>
@@ -22,7 +21,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 /// configuration
-#define MAX_INI_COUNT (10)
+constexpr auto kImuInitCountThreshold = std::size_t { 10 };
 
 inline bool time_list(PointT& x, PointT& y) { return (x.curvature < y.curvature); };
 
@@ -44,8 +43,7 @@ public:
     void set_gyr_bias_cov(const V3D& b_g);
     void set_acc_bias_cov(const V3D& b_a);
 
-    void process(
-        const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
+    void process(const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
         const std::shared_ptr<PointCloudXYZI>& undistrot_pointcloud);
 
     Eigen::Matrix<double, 12, 12> Q;
@@ -61,9 +59,8 @@ public:
 private:
     void initialize_imu(
         const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, int& N);
-    void undistort_pcl(
-        const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
-        PointCloudXYZI& pcl_out);
+    void undistort_pcl(const MeasureGroup& meas,
+        esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, PointCloudXYZI& pcl_out);
 
     PointCloudXYZI::Ptr cur_pcl_un_;
     sensor_msgs::msg::Imu::ConstSharedPtr last_imu_;
@@ -78,7 +75,7 @@ private:
     V3D acc_s_last;
     double start_timestamp_;
     double last_lidar_end_time_;
-    int init_iter_num   = 1;
-    bool b_first_frame_ = true;
-    bool imu_need_init_ = true;
+    int init_iter_num    = 1;
+    bool is_first_frame_ = true;
+    bool need_init_imu_  = true;
 };

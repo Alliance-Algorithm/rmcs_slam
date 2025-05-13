@@ -156,7 +156,24 @@ target_link_libraries(
     pcl_io
     pcl_common
     pcl_filters
-    ${OpenCV_LIBRARIES}
+)
+
+
+# Calibration 进程
+file(GLOB_RECURSE CALIBRATION_SRC CONFIGURE_DEPENDS src/calibration/*.cpp)
+add_executable(
+    calibration
+    ${CALIBRATION_SRC}
+)
+ament_target_dependencies(
+    calibration
+    ${dependencies}
+)
+target_link_libraries(
+    calibration
+    util
+    fast_gicp
+    pcl_common
 )
 
 # ROS2 安装配置

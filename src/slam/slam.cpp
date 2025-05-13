@@ -34,8 +34,8 @@ using namespace rmcs;
 static constexpr auto initialize_interval = 0.1;
 static constexpr auto lidar_point_cov     = 0.001;
 
-static auto global_mutex  = std::mutex{};
-static auto global_signal = std::condition_variable{};
+static auto global_mutex  = std::mutex {};
+static auto global_signal = std::condition_variable {};
 
 // let a static c style function pointer accesses the no-static member function
 using ProcessCallback = std::function<void(state_ikfom&, esekfom::dyn_share_datastruct<double>&)>;
@@ -65,16 +65,14 @@ struct SLAM::Impl {
         rclcpp_info("read parameters from yaml successfully");
 
         synthesizer.initialize(node);
-        synthesizer.register_callback(
-            [this](const auto& msg) { lidar_subscription_callback(msg); },
+        synthesizer.register_callback([this](const auto& msg) { lidar_subscription_callback(msg); },
             [this](const auto& msg) { imu_subscription_callback(msg); });
         rclcpp_info("finish initializing synthesizer");
 
         using namespace std::chrono_literals;
         ros_utility.register_update_function([this] { update(); });
         ros_utility.register_publish_map_function([this] {
-            if (enable_publish_constructed_map)
-                publish_constructed_map();
+            if (enable_publish_constructed_map) publish_constructed_map();
         });
         ros_utility.register_map_save_function([this] { save_to_pcd(); });
         ros_utility.register_reset_function([&, this] { reset_slam(node); });
@@ -106,8 +104,8 @@ struct SLAM::Impl {
 
         rclcpp_info("slam source initialized successfully");
 
-        auto translation = Eigen::Vector3d{};
-        auto orientation = Eigen::Matrix3d{};
+        auto translation = Eigen::Vector3d {};
+        auto orientation = Eigen::Matrix3d {};
 
         translation << VEC_FROM_ARRAY(extrinsic_translation);
         orientation << MAT_FROM_ARRAY(extrinsic_orientation);
@@ -119,9 +117,8 @@ struct SLAM::Impl {
             V3D(covariance_accelerometer, covariance_accelerometer, covariance_accelerometer));
         imu_process->set_gyr_bias_cov(
             V3D(covariance_gyroscpoe_bias, covariance_gyroscpoe_bias, covariance_gyroscpoe_bias));
-        imu_process->set_acc_bias_cov(
-            V3D(covariance_accelerometer_bias, covariance_accelerometer_bias,
-                covariance_accelerometer_bias));
+        imu_process->set_acc_bias_cov(V3D(covariance_accelerometer_bias,
+            covariance_accelerometer_bias, covariance_accelerometer_bias));
 
         rclcpp_info("imu process initialized successfully");
 
@@ -130,16 +127,14 @@ struct SLAM::Impl {
         });
 
         std::fill(ekf_limit_array.begin(), ekf_limit_array.end(), 0.001);
-        extended_kalman_filter.init_dyn_share(
-            get_f, df_dx, df_dw, FuncHelperClass::static_function, ekf_max_iterations,
-            ekf_limit_array.data());
+        extended_kalman_filter.init_dyn_share(get_f, df_dx, df_dw, FuncHelperClass::static_function,
+            ekf_max_iterations, ekf_limit_array.data());
 
         rclcpp_info("slam init finished");
     }
 
     void update() {
-        if (!bind_sensor_packages(current_sensor_package))
-            return;
+        if (!bind_sensor_packages(current_sensor_package)) return;
 
         const auto& package = current_sensor_package;
 
@@ -156,7 +151,7 @@ struct SLAM::Impl {
         current_ekf_prediction = extended_kalman_filter.get_x();
 
         current_robot_pose = current_ekf_prediction.pos
-                           + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
+            + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
 
         if (pointcloud_origin_undistort->empty() || (pointcloud_origin_undistort == nullptr)) {
             rclcpp_warn("no point, skip this scan!");
@@ -184,8 +179,7 @@ struct SLAM::Impl {
                 ikdtree.set_downsample_param(static_cast<float>(filter_size_map_min));
                 pointcloud_downsample_world->resize(feats_downsample_size);
                 for (int i = 0; i < feats_downsample_size; i++) {
-                    point_lidar_to_world(
-                        pointcloud_downsample_undistort_imu->points[i],
+                    point_lidar_to_world(pointcloud_downsample_undistort_imu->points[i],
                         pointcloud_downsample_world->points[i]);
                 }
 
@@ -216,7 +210,7 @@ struct SLAM::Impl {
         current_ekf_prediction = extended_kalman_filter.get_x();
 
         current_robot_pose = current_ekf_prediction.pos
-                           + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
+            + current_ekf_prediction.rot * current_ekf_prediction.offset_T_L_I;
 
         current_orientation.x = current_ekf_prediction.rot.coeffs()[0];
         current_orientation.y = current_ekf_prediction.rot.coeffs()[1];
@@ -232,17 +226,14 @@ struct SLAM::Impl {
         map_incremental();
 
         // publish the cloud
-        if (enable_publish_path)
-            publish_path();
+        if (enable_publish_path) publish_path();
 
         if (enable_publish_pointcloud_all) {
             publish_pointcloud_registerd_world();
 
-            if (enable_publish_pointcloud_imu)
-                publish_pointcloud_registerd_imu();
+            if (enable_publish_pointcloud_imu) publish_pointcloud_registerd_imu();
 
-            if (enable_publish_pointcloud_effect_world)
-                publish_pointcloud_effect_world();
+            if (enable_publish_pointcloud_effect_world) publish_pointcloud_effect_world();
         }
     }
 
@@ -261,8 +252,9 @@ struct SLAM::Impl {
         const auto result = current_ekf_prediction;
 
         auto point_body  = Eigen::Vector3d(src.x, src.y, src.z);
-        auto point_world = Eigen::Vector3d{
-            result.rot * (result.offset_R_L_I * point_body + result.offset_T_L_I) + result.pos};
+        auto point_world = Eigen::Vector3d {
+            result.rot * (result.offset_R_L_I * point_body + result.offset_T_L_I) + result.pos
+        };
 
         dst.x = static_cast<float>(point_world(0));
         dst.y = static_cast<float>(point_world(1));
@@ -290,7 +282,7 @@ struct SLAM::Impl {
 
         auto pointcloud_world = std::make_shared<PointCloudXYZI>(pointcloud_use->size(), 1);
 
-        std::size_t index{0};
+        std::size_t index { 0 };
         for (auto& point : *pointcloud_world)
             point_lidar_to_world(pointcloud_use->at(index++), point);
 
@@ -306,7 +298,7 @@ struct SLAM::Impl {
         auto pointcloud_size = pointcloud_origin_undistort->points.size();
         auto pointcloud_imu  = std::make_shared<PointCloudXYZI>(pointcloud_size, 1);
 
-        std::size_t index{0};
+        std::size_t index { 0 };
         for (auto& point : *pointcloud_imu)
             point_lidar_to_imu(pointcloud_origin_undistort->at(index++), point);
 
@@ -321,7 +313,7 @@ struct SLAM::Impl {
     void publish_pointcloud_effect_world() {
         auto pointcloud_effect = std::make_shared<PointCloudXYZI>(pointcloud_effect_size, 1);
 
-        std::size_t index{0};
+        std::size_t index { 0 };
         for (const auto& point : *origin_constructed_map)
             point_lidar_to_world(point, pointcloud_effect->points[index++]);
 
@@ -335,15 +327,14 @@ struct SLAM::Impl {
 
     void publish_constructed_map() {
         const auto pointcloud_use = enable_publish_pointcloud_dense
-                                      ? pointcloud_origin_undistort
-                                      : pointcloud_downsample_undistort_imu;
-        if (pointcloud_use->empty())
-            return;
+            ? pointcloud_origin_undistort
+            : pointcloud_downsample_undistort_imu;
+        if (pointcloud_use->empty()) return;
 
         const auto pointcloud_size      = pointcloud_use->points.size();
         const auto constructed_map_part = std::make_shared<PointCloudXYZI>(pointcloud_size, 1);
 
-        std::size_t index{0};
+        std::size_t index { 0 };
         for (auto& point : *constructed_map_part)
             point_lidar_to_world(pointcloud_use->at(index++), point);
 
@@ -356,7 +347,7 @@ struct SLAM::Impl {
         filter.setInputCloud(constructed_map_pointcloud);
         filter.filter(*filtered_cloud);
 
-        auto msg = sensor_msgs::msg::PointCloud2{};
+        auto msg = sensor_msgs::msg::PointCloud2 {};
         pcl::toROSMsg(*filtered_cloud, msg);
 
         msg.header.stamp    = get_ros_time(lidar_end_timestamp);
@@ -393,20 +384,16 @@ struct SLAM::Impl {
         stamp.header.frame_id = "lidar_link";
         stamp.child_frame_id  = "lidar_init";
 
-        auto t = Eigen::Affine3d(
-            Eigen::Translation3d(
-                current_odometry.pose.pose.position.x, current_odometry.pose.pose.position.y,
-                current_odometry.pose.pose.position.z));
-        auto r = Eigen::Affine3d(
-            Eigen::Quaterniond(
-                current_odometry.pose.pose.orientation.w, current_odometry.pose.pose.orientation.x,
-                current_odometry.pose.pose.orientation.y,
-                current_odometry.pose.pose.orientation.z));
+        auto t = Eigen::Affine3d(Eigen::Translation3d(current_odometry.pose.pose.position.x,
+            current_odometry.pose.pose.position.y, current_odometry.pose.pose.position.z));
+        auto r = Eigen::Affine3d(Eigen::Quaterniond(current_odometry.pose.pose.orientation.w,
+            current_odometry.pose.pose.orientation.x, current_odometry.pose.pose.orientation.y,
+            current_odometry.pose.pose.orientation.z));
 
         auto transform = (t * r).inverse();
 
-        Eigen::Vector3d translation{transform.translation()};
-        Eigen::Quaterniond rotation{transform.linear()};
+        Eigen::Vector3d translation { transform.translation() };
+        Eigen::Quaterniond rotation { transform.linear() };
 
         stamp.transform.translation.x = translation.x();
         stamp.transform.translation.y = translation.y();
@@ -419,7 +406,7 @@ struct SLAM::Impl {
         ros_utility.update_transform(stamp);
 
         // publish the pose only with less data
-        auto pose               = geometry_msgs::msg::PoseStamped{};
+        auto pose               = geometry_msgs::msg::PoseStamped {};
         pose.header             = current_odometry.header;
         pose.pose.position.x    = current_odometry.pose.pose.position.x;
         pose.pose.position.y    = current_odometry.pose.pose.position.y;
@@ -455,15 +442,15 @@ struct SLAM::Impl {
         enable_publish_path                    = p("publish.path", false);
         enable_publish_constructed_map         = p("publish.constructed_map", false);
 
-        ekf_max_iterations        = p("max_iteration", int{4});
-        constructed_map_save_path = p("map_file_path", std::string{""});
-        filter_size_corner_min    = p("filter_size_corner", double{0.5});
-        filter_size_surf_min      = p("filter_size_surf", double{0.5});
-        filter_size_map_min       = p("filter_size_map", double{0.5});
-        cube_side_length          = p("cube_side_length", double{200});
+        ekf_max_iterations        = p("max_iteration", int { 4 });
+        constructed_map_save_path = p("map_file_path", std::string { "" });
+        filter_size_corner_min    = p("filter_size_corner", double { 0.5 });
+        filter_size_surf_min      = p("filter_size_surf", double { 0.5 });
+        filter_size_map_min       = p("filter_size_map", double { 0.5 });
+        cube_side_length          = p("cube_side_length", double { 200 });
 
         enable_timestamp_sync       = p("common.enable_timestamp_sync", false);
-        timestamp_diff_lidar_to_imu = p("common.time_offset_lidar_to_imu", double{0});
+        timestamp_diff_lidar_to_imu = p("common.time_offset_lidar_to_imu", double { 0 });
 
         lidar_detection_distance      = p("mapping.lidar_detection_distance", 300.f);
         fov_degree                    = p("mapping.fov_degree", 180.f);
@@ -472,18 +459,18 @@ struct SLAM::Impl {
         covariance_gyroscpoe_bias     = p("mapping.b_gyr_cov", 0.0001);
         covariance_accelerometer_bias = p("mapping.b_acc_cov", 0.0001);
         enable_extrinsic_estimation   = p("mapping.extrinsic_est_en", true);
-        extrinsic_translation         = p("mapping.extrinsic_translation", std::vector<double>{});
-        extrinsic_orientation         = p("mapping.extrinsic_orientation", std::vector<double>{});
+        extrinsic_translation         = p("mapping.extrinsic_translation", std::vector<double> {});
+        extrinsic_orientation         = p("mapping.extrinsic_orientation", std::vector<double> {});
 
         assert(extrinsic_translation.size() == 3);
         assert(extrinsic_orientation.size() == 9);
 
-        preprocess->blind            = p("preprocess.blind", double{0.01});
-        preprocess->lidar_type       = p("preprocess.lidar_type", int{AVIA});
-        preprocess->N_SCANS          = p("preprocess.scan_line", int{16});
-        preprocess->time_unit        = p("preprocess.timestamp_unit", int{US});
-        preprocess->SCAN_RATE        = p("preprocess.scan_rate", int{10});
-        preprocess->point_filter_num = p("preprocess.point_filter_num", int{2});
+        preprocess->blind            = p("preprocess.blind", double { 0.01 });
+        preprocess->lidar_type       = p("preprocess.lidar_type", int { AVIA });
+        preprocess->N_SCANS          = p("preprocess.scan_line", int { 16 });
+        preprocess->time_unit        = p("preprocess.timestamp_unit", int { US });
+        preprocess->SCAN_RATE        = p("preprocess.scan_rate", int { 10 });
+        preprocess->point_filter_num = p("preprocess.point_filter_num", int { 2 });
         preprocess->feature_enabled  = p("preprocess.feature_extract_enable", false);
     }
 
@@ -511,8 +498,7 @@ struct SLAM::Impl {
                 need_move = true;
         }
 
-        if (!need_move)
-            return;
+        if (!need_move) return;
 
         BoxPointType new_local_map_points;
         BoxPointType temp_box_points;
@@ -545,8 +531,7 @@ struct SLAM::Impl {
         PointVector points_history;
         ikdtree.acquire_removed_points(points_history);
 
-        if (point_box_need_remove.size() > 0)
-            ikdtree.Delete_Point_Boxes(point_box_need_remove);
+        if (point_box_need_remove.size() > 0) ikdtree.Delete_Point_Boxes(point_box_need_remove);
     }
 
     bool bind_sensor_packages(MeasureGroup& meas) {
@@ -565,9 +550,9 @@ struct SLAM::Impl {
             // time too little
             if (meas.lidar->points.size() <= 1) {
                 lidar_end_timestamp = meas.lidar_beg_time + lidar_mean_scan_time;
-                rclcpp_error("too few input point cloud!");
-            } else if (
-                meas.lidar->points.back().curvature / double(1000) < 0.5 * lidar_mean_scan_time) {
+                rclcpp_warn("the size of lidar frame is not enough!");
+            } else if (meas.lidar->points.back().curvature / double(1000)
+                < 0.5 * lidar_mean_scan_time) {
                 lidar_end_timestamp = meas.lidar_beg_time + lidar_mean_scan_time;
             } else {
                 scan_number++;
@@ -592,8 +577,7 @@ struct SLAM::Impl {
         meas.imu.clear();
         while ((!imu_buffer.empty()) && (imu_time < lidar_end_timestamp)) {
             imu_time = get_time_sec(imu_buffer.front()->header.stamp);
-            if (imu_time > lidar_end_timestamp)
-                break;
+            if (imu_time > lidar_end_timestamp) break;
             meas.imu.push_back(imu_buffer.front());
             imu_buffer.pop_front();
         }
@@ -613,8 +597,7 @@ struct SLAM::Impl {
 
         for (int i = 0; i < feats_downsample_size; i++) {
             /* transform to world frame */
-            point_lidar_to_world(
-                pointcloud_downsample_undistort_imu->points[i],
+            point_lidar_to_world(pointcloud_downsample_undistort_imu->points[i],
                 pointcloud_downsample_world->points[i]);
 
             /* decide if need add to map */
@@ -652,16 +635,14 @@ struct SLAM::Impl {
                 }
 
                 for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++) {
-                    if (points_near.size() < NUM_MATCH_POINTS)
-                        break;
+                    if (points_near.size() < NUM_MATCH_POINTS) break;
                     if (calc_dist(points_near[readd_i], mid_point) < dist) {
                         need_add = false;
                         break;
                     }
                 }
 
-                if (need_add)
-                    PointToAdd.push_back(pointcloud_downsample_world->points[i]);
+                if (need_add) PointToAdd.push_back(pointcloud_downsample_world->points[i]);
 
             } else {
                 PointToAdd.push_back(pointcloud_downsample_world->points[i]);
@@ -710,21 +691,20 @@ struct SLAM::Impl {
                 auto distance_flag = (pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5) ? false : true;
 
                 points_selected_surf[i] = ((points_near.size() < NUM_MATCH_POINTS)
-                                               ? false
-                                               : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
-                                            ? false
-                                            : true;
+                                                  ? false
+                                                  : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5)
+                    ? false
+                    : true;
             }
 
-            if (!points_selected_surf[i])
-                continue;
+            if (!points_selected_surf[i]) continue;
 
             points_selected_surf[i] = false;
 
-            auto plane = Eigen::Matrix<float, 4, 1>{};
+            auto plane = Eigen::Matrix<float, 4, 1> {};
             if (esti_plane(plane, points_near, 0.1f)) {
                 float distance2 = plane(0) * point_world.x + plane(1) * point_world.y
-                                + plane(2) * point_world.z + plane(3);
+                    + plane(2) * point_world.z + plane(3);
                 auto score = 1.f - 0.9 * std::abs(distance2) / std::sqrt(p_body.norm());
                 if (score > 0.9) {
                     points_selected_surf[i]            = true;
@@ -776,8 +756,7 @@ struct SLAM::Impl {
             V3D C(s.rot.conjugate() * norm_vec);
             V3D A(point_crossmat * C);
             if (enable_extrinsic_estimation) {
-                V3D B(
-                    point_be_crossmat * s.offset_R_L_I.conjugate()
+                V3D B(point_be_crossmat * s.offset_R_L_I.conjugate()
                     * C); // s.rot.conjugate()*norm_vec);
                 ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z,
                     VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
@@ -799,10 +778,10 @@ struct SLAM::Impl {
 
         ros_utility.stop_service();
 
-        current_path         = nav_msgs::msg::Path{};
-        current_odometry     = nav_msgs::msg::Odometry{};
-        current_orientation  = geometry_msgs::msg::Quaternion{};
-        current_pose_stamped = geometry_msgs::msg::PoseStamped{};
+        current_path         = nav_msgs::msg::Path {};
+        current_odometry     = nav_msgs::msg::Odometry {};
+        current_orientation  = geometry_msgs::msg::Quaternion {};
+        current_pose_stamped = geometry_msgs::msg::PoseStamped {};
 
         ///////// PROCESS /////////
         lidar_pushed                = false;
@@ -863,15 +842,15 @@ struct SLAM::Impl {
         normal_vector_correspondence->clear();
         constructed_map_pointcloud->clear();
 
-        local_map_point_box = BoxPointType{};
+        local_map_point_box = BoxPointType {};
 
         ikdtree.~KD_TREE();
-        new (&ikdtree) KD_TREE<pcl::PointXYZINormal>{};
+        new (&ikdtree) KD_TREE<pcl::PointXYZINormal> {};
 
-        current_sensor_package = MeasureGroup{};
-        current_robot_pose     = MTK::vect<3, double>{};
-        extended_kalman_filter = esekfom::esekf<state_ikfom, 12, input_ikfom>{};
-        current_ekf_prediction = state_ikfom{};
+        current_sensor_package = MeasureGroup {};
+        current_robot_pose     = MTK::vect<3, double> {};
+        extended_kalman_filter = esekfom::esekf<state_ikfom, 12, input_ikfom> {};
+        current_ekf_prediction = state_ikfom {};
 
         ros_utility.start_service();
 
@@ -898,8 +877,7 @@ struct SLAM::Impl {
 
         if (!enable_timestamp_sync && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0
             && !imu_buffer.empty() && !lidar_buffer.empty()) {
-            rclcpp_warn(
-                "IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf \n",
+            rclcpp_warn("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf \n",
                 last_timestamp_imu, last_timestamp_lidar);
         }
 
@@ -948,31 +926,28 @@ struct SLAM::Impl {
 #pragma clang diagnostic ignored "-Wformat-security"
     std::shared_ptr<rclcpp::Logger> logger;
 
-    template <typename... Args>
-    void rclcpp_info(Args... args) {
+    template <typename... Args> void rclcpp_info(Args... args) {
         RCLCPP_INFO(*logger, std::forward<Args>(args)...);
     }
-    template <typename... Args>
-    void rclcpp_warn(Args... args) {
+    template <typename... Args> void rclcpp_warn(Args... args) {
         RCLCPP_WARN(*logger, std::forward<Args>(args)...);
     }
-    template <typename... Args>
-    void rclcpp_error(Args... args) {
+    template <typename... Args> void rclcpp_error(Args... args) {
         RCLCPP_ERROR(*logger, std::forward<Args>(args)...);
     }
 
     // 双激光雷达同步器，负责同步两者变换
-    Synthesizer synthesizer{};
+    Synthesizer synthesizer {};
 
     // ROS2 相关接口的包装器
-    RosUtil ros_utility{};
+    RosUtil ros_utility {};
 
     // IKD 树
     KD_TREE<PointT> ikdtree;
 
-    std::unique_ptr<Preprocess> preprocess{std::make_unique<Preprocess>()};
+    std::unique_ptr<Preprocess> preprocess { std::make_unique<Preprocess>() };
 
-    std::unique_ptr<ImuProcess> imu_process{std::make_unique<ImuProcess>()};
+    std::unique_ptr<ImuProcess> imu_process { std::make_unique<ImuProcess>() };
 
     pcl::VoxelGrid<PointT> downsample_scan_filter;
 
@@ -1070,7 +1045,7 @@ struct SLAM::Impl {
 };
 
 SLAM::SLAM()
-    : Node("rmcs_slam", util::NodeOptions{})
+    : Node("rmcs_slam", util::NodeOptions {})
     , pimpl(std::make_unique<Impl>()) {
     pimpl->initialize(*this);
 }

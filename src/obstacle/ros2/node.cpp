@@ -39,7 +39,7 @@ struct MapNode::Impl {
     std::shared_ptr<rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>> livox_subscription_;
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> pointcloud_subscription_;
 
-    std::shared_ptr<tf2_ros::TransformBroadcaster> transform_broadcaster;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
     std::unique_ptr<tf2_ros::Buffer> transform_buffer;
     std::unique_ptr<tf2_ros::TransformListener> transform_listener;
 
@@ -80,7 +80,7 @@ struct MapNode::Impl {
     void publish_transform(geometry_msgs::msg::TransformStamped& transform) {
         transform.header.frame_id = "lidar_link";
         transform.child_frame_id  = map_frame_id;
-        transform_broadcaster->sendTransform(transform);
+        static_transform_broadcaster->sendTransform(transform);
     }
 };
 
@@ -118,14 +118,16 @@ MapNode::MapNode()
     pimpl->pointcloud_frame_limit = param::get<int>("lidar.livox_frames");
 
     pimpl->pointcloud_frames.resize(pimpl->pointcloud_frame_limit);
-    pimpl->transform_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
-    pimpl->transform_buffer      = std::make_unique<tf2_ros::Buffer>(get_clock());
+    pimpl->static_transform_broadcaster =
+        std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+    pimpl->transform_buffer = std::make_unique<tf2_ros::Buffer>(get_clock());
     pimpl->transform_listener =
         std::make_unique<tf2_ros::TransformListener>(*pimpl->transform_buffer);
 
     auto transform         = geometry_msgs::msg::TransformStamped {};
     transform.header.stamp = get_clock()->now();
     util::convert_orientation(Eigen::Quaterniond::Identity(), transform.transform.rotation);
+    pimpl->publish_transform(transform);
 }
 
 MapNode::~MapNode() = default;
