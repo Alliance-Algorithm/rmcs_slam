@@ -106,7 +106,7 @@ public:
 
         // rotate and get score, select the best angle
         double score_min = 1.0;
-        int angle_best = 0;
+        int angle_best   = 0;
 
         // set maximum iterations for rough match
         fast_gicp_engine->setMaximumIterations(coarse_iterations);
@@ -114,18 +114,18 @@ public:
 
         for (auto n = 1; (scan_angle * n / 2) < 181; n++) {
 
-            const auto angle
-                = static_cast<int>(scan_angle * static_cast<int>(n / 2) * std::pow(-1, n));
+            const auto angle =
+                static_cast<int>(scan_angle * static_cast<int>(n / 2) * std::pow(-1, n));
 
-            auto radian = static_cast<float>(static_cast<float>(angle) / 180 * std::numbers::pi);
+            auto radian   = static_cast<float>(static_cast<float>(angle) / 180 * std::numbers::pi);
             auto rotation = Eigen::AngleAxisf(radian, Eigen::Vector3f::UnitZ());
-            auto guess = (rotation * transformation).matrix();
+            auto guess    = (rotation * transformation).matrix();
 
             fast_gicp_engine->align(*align, guess);
             auto score = fast_gicp_engine->getFitnessScore(1.0);
 
             if (score < score_min) {
-                score_min = score;
+                score_min  = score;
                 angle_best = angle;
             }
 
@@ -145,9 +145,9 @@ public:
         rclcpp_info("[maximum_iterations_detailed] %d", precise_iterations);
 
         // use the best rotation to align
-        auto radian = static_cast<float>(static_cast<float>(angle_best) / 180 * std::numbers::pi);
+        auto radian   = static_cast<float>(static_cast<float>(angle_best) / 180 * std::numbers::pi);
         auto rotation = Eigen::AngleAxisf(radian, Eigen::Vector3f::UnitZ());
-        auto guess = (rotation * transformation).matrix();
+        auto guess    = (rotation * transformation).matrix();
 
         fast_gicp_engine->align(*align, guess);
 

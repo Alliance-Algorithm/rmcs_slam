@@ -34,12 +34,12 @@ rmcs_slam:
       enable: true
       lidar_topic: "/livox/lidar_192_168_1_174"
       imu_topic: "/livox/imu_192_168_1_174"
-      x: -0.03300
-      y: -0.06117
-      z: +0.28000
-      yaw: 180.0
-      pitch: 0.0
-      roll: -50.0
+      x: 0.00274
+      y: -0.02807
+      z: 0.33836
+      yaw: 179.87
+      pitch: -0.54
+      roll: -49.75
 
     common:
       # only turn on when external time synchronization is really not possible

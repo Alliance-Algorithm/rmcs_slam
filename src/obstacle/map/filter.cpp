@@ -55,8 +55,6 @@ static inline void make_gradient_map(cv::Mat& origin) {
 }
 
 void filter_map(ObstacleMap& node_map) {
-    static const auto gradient         = param::get<bool>("filter.gradient");
-    static const auto threshold        = param::get<int>("filter.threshold");
     static const auto pre_dilate_size  = param::get<int>("filter.pre_dilate_size");
     static const auto pre_dilate_times = param::get<int>("filter.pre_dilate_times");
     static const auto pre_close_size   = param::get<int>("filter.pre_close_size");
@@ -87,21 +85,11 @@ void filter_map(ObstacleMap& node_map) {
         cv::morphologyEx(mat, mat, cv::MORPH_OPEN, element, cv::Point(-1, -1), pre_close_times);
     }
 
-    // gradient
-    // 疑似再也不需要梯度
-    // if (gradient) make_gradient_map(mat);
-
     // dilate
     if (dilate_size != 0) {
         element = getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(dilate_size, dilate_size));
         cv::erode(mat, mat, element);
     }
-
-    // range
-    // mat.forEach<uint8_t>([](uint8_t& pixel, const int* position) {
-    //     pixel = static_cast<uint8_t>(pixel < threshold ? 0 : pixel);
-    //     pixel = static_cast<uint8_t>(pixel > 100 ? 100 : pixel);
-    // });
 
     for (auto x = 0; x < node_map.width(); x++)
         for (auto y = 0; y < node_map.width(); y++) {

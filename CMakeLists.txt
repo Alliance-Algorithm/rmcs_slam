@@ -178,7 +178,7 @@ target_link_libraries(
 
 # ROS2 安装配置
 install(
-  TARGETS slam obstacle location
+  TARGETS slam obstacle location calibration
   DESTINATION lib/${PROJECT_NAME}
 )
 install(

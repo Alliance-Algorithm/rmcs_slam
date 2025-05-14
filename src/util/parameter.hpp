@@ -16,9 +16,9 @@ public:
     explicit quick_paramtetr_reader(rclcpp::Node& node)
         : node(node) {
         auto vaild = node.get_node_options().automatically_declare_parameters_from_overrides()
-                  && node.get_node_options().allow_undeclared_parameters();
+            && node.get_node_options().allow_undeclared_parameters();
         if (vaild == false)
-            throw std::runtime_error{"请检查 NodeOptions 配置，无法自动定义参数"};
+            throw std::runtime_error { "请检查 NodeOptions 配置，无法自动定义参数" };
     }
 
     /// @usage auto v = foo("name", int{});
@@ -30,9 +30,8 @@ public:
         return get_parameter<T>(name);
     }
 
-    template <typename T>
-    T get_parameter(const std::string& name) const {
-        auto v = T{};
+    template <typename T> T get_parameter(const std::string& name) const {
+        auto v = T {};
         node.get_parameter(name, v);
         return v;
     }

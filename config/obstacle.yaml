@@ -27,7 +27,7 @@ rmcs_map:
         lidar:
             # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
             # 以及未纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
-            livox_frames: 10
+            livox_frames: 20
         segmentation:
             # 点云分割中迭代的最大相邻点的距离
             # 这个距离内的点云被视作统一平面内
@@ -46,16 +46,11 @@ rmcs_map:
             # 有效点高度区间阈值，障碍物高度区间大于此值才视作有效
             height_limit: 0.1
         filter:
-            # 障碍地图的阈值，大于此值视为障碍物
-            # 量纲是由真实高度缩放至 0 -> 127 后求梯度得来的
-            threshold: 30
             # 预先膨胀，为了更好的闭合障碍物
             pre_dilate_size: 3
             pre_dilate_times: 1
             # 闭合，拟补激光雷达点云的缺口
             pre_close_size: 3
             pre_close_times: 1
-            # 求梯度，可以借此过滤掉坡
-            gradient: false
             # 最后膨胀提升容错率
             dilate_size: 3

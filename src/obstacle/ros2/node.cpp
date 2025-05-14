@@ -51,12 +51,8 @@ struct MapNode::Impl {
     void pointcloud_subscription_callback(
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
         const std_msgs::msg::Header& header, const Callback& process) {
-        auto& pointcloud_frame = pointcloud_frames.at(pointcloud_frame_index);
 
-        pointcloud_frame.clear();
-        pointcloud_frame = *pointcloud;
-
-        // 将点云变换到 odom 系中，去除多帧点云间的旋转畸变
+        // 补偿多帧叠加的位移偏差
         auto orientation = Eigen::Quaternionf::Identity();
         auto translation = Eigen::Translation3f::Identity();
         try {
@@ -69,8 +65,10 @@ struct MapNode::Impl {
             translation = Eigen::Translation3f::Identity();
             rclcpp_warn("%s", e.what());
         }
+        auto& pointcloud_frame = pointcloud_frames.at(pointcloud_frame_index);
+        pointcloud_frame.clear();
         pcl::transformPointCloud(
-            *pointcloud, *pointcloud, Eigen::Affine3f { translation * orientation });
+            *pointcloud, pointcloud_frame, Eigen::Affine3f { translation * orientation });
 
         auto pointcloud_mixed = std::make_shared<PointCloud>();
         for (const auto& frame : pointcloud_frames)
@@ -81,7 +79,7 @@ struct MapNode::Impl {
         pcl::transformPointCloud(*pointcloud_mixed, *pointcloud_mixed_yaw_link,
             Eigen::Affine3f { translation * orientation }.inverse());
 
-        process(pointcloud_mixed, header);
+        process(pointcloud_mixed_yaw_link, header);
 
         if (++pointcloud_frame_index >= pointcloud_frame_limit) pointcloud_frame_index = 0;
     }
@@ -140,6 +138,8 @@ MapNode::~MapNode() = default;
 
 void MapNode::pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
     const std_msgs::msg::Header& header) {
+
+    if (pointcloud->size() < 10) return;
 
     pimpl->segmentation.set_input_source(pointcloud);
     auto segmentation_part = pimpl->segmentation.execute();

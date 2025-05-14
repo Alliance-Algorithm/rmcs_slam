@@ -1,2 +1,14 @@
 rmcs_calibration:
   ros__parameters:
+    elemental:
+      topic: /livox/lidar_192_168_1_120
+      t: [0.09216, 0.08425, 0.2800]
+      yaw: -49.7
+      pitch: 0.0
+      roll: -50.0
+    auxiliary:
+      topic: /livox/lidar_192_168_1_174
+      t: [-0.03300, -0.06117, 0.2800]
+      yaw: 180.0
+      pitch: 0.0
+      roll: -50.0

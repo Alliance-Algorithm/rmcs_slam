@@ -1,5 +1,4 @@
 // for rclcpp_info on initialize function
-#include <queue>
 #pragma clang diagnostic ignored "-Wformat-security"
 
 #include "synthesizer.hpp"
@@ -9,7 +8,10 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <rosbag2_cpp/writer.hpp>
 #include <sensor_msgs/msg/point_cloud2.h>
+
+#include <queue>
 
 using namespace rmcs;
 
@@ -69,21 +71,8 @@ public:
         }
     }
 
-    void switch_record(bool on) { enable_record = on; }
-
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
-
-    template <typename Msg> struct StampedMsg : public Msg {
-        bool operator<(const StampedMsg& o) const {
-            return (rclcpp::Time { this->header.stamp } > rclcpp::Time { o.header.stamp });
-        }
-    };
-    std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
-    std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
-
-    std::size_t lidar_queue_buffer_size = 2;
-    std::size_t imu_queue_buffer_size   = 40;
 
     /// @brief 单个雷达相关ROS2接口的包装
     struct LidarContext {
@@ -175,25 +164,18 @@ private:
 
     } primary_context, secondary_context;
 
-    std::array<LivoxMsg, 2> secondary_buffer;
-    std::atomic<bool> secondary_write_first_buffer;
-
-    LivoxMsg primary_lidar_message;
-    ImuMsg primary_imu_message;
-    bool is_primary_lidar_reveived = false;
-    bool is_primary_imu_reveived   = false;
-
-    LivoxMsg secondary_lidar_message;
-    ImuMsg secondary_imu_message;
-    bool is_secondary_lidar_received = false;
-    bool is_secondary_imu_received   = false;
+    template <typename Msg> struct StampedMsg : public Msg {
+        bool operator<(const StampedMsg& o) const {
+            return (rclcpp::Time { this->header.stamp } > rclcpp::Time { o.header.stamp });
+        }
+    };
 
     bool enable_primary { false };
     bool enable_secondary { false };
-    bool enable_record { false };
 
-    // 传入的回调理应是 slam 的点云和 IMU 回调
     // 此方略若使用两个雷达，会造成畸变纠正的劣化
+    std::array<LivoxMsg, 2> secondary_buffer;
+    std::atomic<bool> secondary_write_first_buffer;
     void register_callback_with_combination(const auto& update_lidar, const auto& update_imu) {
         if (!enable_secondary) {
             primary_context.register_callback(update_lidar, update_imu);
@@ -222,6 +204,13 @@ private:
         secondary_context.register_callback(secondary_livox_callback, [](const auto&) { });
     }
 
+    // 雷达时间戳顺序更新
+    std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
+    std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
+
+    std::size_t lidar_queue_buffer_size = 2;
+    std::size_t imu_queue_buffer_size   = 40;
+
     void register_callback_without_combination(const auto& update_lidar, const auto& update_imu) {
         const auto lidar_callback = [this, update_lidar](const std::unique_ptr<LivoxMsg>& msg) {
             lidar_queue.emplace(StampedMsg<LivoxMsg> { *msg });
@@ -243,11 +232,6 @@ private:
         primary_context.register_callback(lidar_callback, imu_callback);
         secondary_context.register_callback(lidar_callback, imu_callback);
     }
-
-    Eigen::Isometry3f calibrate_lidars(const PointCloud& main, const PointCloud& other) {
-        (void)this;
-        return {};
-    }
 };
 
 Synthesizer::Synthesizer()
@@ -265,4 +249,4 @@ void Synthesizer::register_callback(
     pimpl->register_callback(livox_callback, imu_callback);
 }
 
-void Synthesizer::switch_record(bool on) { pimpl->switch_record(on); }
+void Synthesizer::switch_record(bool on) { }
