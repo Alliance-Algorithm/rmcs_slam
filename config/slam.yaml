@@ -8,16 +8,16 @@ rmcs_slam:
     record_path: "/workspaces/RMCS/develop_ws/bag/"
 
     primary_lidar:
-      enable: true
+      enable: false
       lidar_topic: "/livox/lidar_192_168_1_120"
       imu_topic: "/livox/imu_192_168_1_120"
       # lidar_topic: "/livox/lidar"
       # imu_topic: "/livox/imu"
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
-      x: +0.09216
-      y: +0.08425
-      z: +0.2800
+      x: +0.14
+      y: +0.12
+      z: +0.27
       # x: 0.0
       # y: 0.0
       # z: 0.6
@@ -36,7 +36,7 @@ rmcs_slam:
       imu_topic: "/livox/imu_192_168_1_174"
       x: -0.03300
       y: -0.06117
-      z: 0.28000
+      z: +0.27
       yaw: 180.0
       pitch: 0.0
       roll: -50.0

@@ -64,7 +64,7 @@ public:
 
     void register_callback(const auto& update_lidar, const auto& update_imu) {
         if (enable_primary && enable_secondary)
-            register_callback_without_combination(update_lidar, update_imu);
+            register_callback_with_combination(update_lidar, update_imu);
         else {
             primary_context.register_callback(update_lidar, update_imu);
             secondary_context.register_callback(update_lidar, update_imu);
