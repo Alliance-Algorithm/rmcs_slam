@@ -209,7 +209,7 @@ private:
     std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
 
     std::size_t lidar_queue_buffer_size = 2;
-    std::size_t imu_queue_buffer_size   = 40;
+    std::size_t imu_queue_buffer_size   = 2;
 
     void register_callback_without_combination(const auto& update_lidar, const auto& update_imu) {
         const auto lidar_callback = [this, update_lidar](const std::unique_ptr<LivoxMsg>& msg) {

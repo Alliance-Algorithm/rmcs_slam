@@ -76,7 +76,7 @@ rmcs_location:
 
     runtime:
       # 对输出位姿的一阶低通滤波
-      filter_alpha: 0.2
+      filter_alpha: 0.5
       minimum_x: -05.0
       minimum_y: -08.0
       minimum_z: -00.5

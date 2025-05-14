@@ -8,6 +8,7 @@
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <pcl/common/transforms.h>
+#include <pcl/filters/crop_box.h>
 #include <rclcpp/logging.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
@@ -21,7 +22,8 @@ using namespace rmcs;
 struct MapNode::Impl {
     RMCS_INITIALIZE_LOGGER("rmcs-map");
 
-    using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+    using Point      = pcl::PointXYZ;
+    using PointCloud = pcl::PointCloud<Point>;
 
     // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
     int pointcloud_frame_limit = 1;
@@ -51,6 +53,15 @@ struct MapNode::Impl {
     void pointcloud_subscription_callback(
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
         const std_msgs::msg::Header& header, const Callback& process) {
+
+        // 去除盲区点云
+        auto crop_box = pcl::CropBox<Point> {};
+        auto blind    = param::get<float>("grid.lidar_blind");
+        crop_box.setMin(Eigen::Vector4f { -blind / 2, -blind / 2, -1'000 , 1});
+        crop_box.setMax(Eigen::Vector4f { +blind / 2, +blind / 2, +1'000 , 1});
+        crop_box.setInputCloud(pointcloud);
+        crop_box.setNegative(true);
+        crop_box.filter(*pointcloud);
 
         // 补偿多帧叠加的位移偏差
         auto orientation = Eigen::Quaternionf::Identity();

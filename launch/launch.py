@@ -15,7 +15,7 @@ def generate_launch_description():
             [FindPackageShare("livox_ros_driver2"), "/launch", "/msg_MID360_launch.py"]
         )
     )
-    # launch.add_action(lidar)
+    launch.add_action(lidar)
 
     # 障碍地图生成进程
     obstacle = Node(
