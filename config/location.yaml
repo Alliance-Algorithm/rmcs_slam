@@ -31,7 +31,7 @@ rmcs_location:
       relocalization_automaic: true
       # 若关闭此选项，系统在 /rmcs_location/initialize 被触发后才运行
       # 开启时，每次启动直接运行进程，初始重定位
-      direct_start: true
+      direct_start: false
 
     registration:
       # 进行配准的点云数量

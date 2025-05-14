@@ -1,4 +1,5 @@
 // for rclcpp_info on initialize function
+#include <queue>
 #pragma clang diagnostic ignored "-Wformat-security"
 
 #include "synthesizer.hpp"
@@ -8,13 +9,15 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <rosbag2_cpp/writer.hpp>
 #include <sensor_msgs/msg/point_cloud2.h>
 
 using namespace rmcs;
 
 struct Synthesizer::Impl {
 public:
+    using Point      = pcl::PointXYZ;
+    using PointCloud = pcl::PointCloud<Point>;
+
     void initialize(rclcpp::Node& node) {
         auto p = util::quick_paramtetr_reader(node);
 
@@ -71,24 +74,16 @@ public:
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
 
-    rosbag2_cpp::Writer recorder;
+    template <typename Msg> struct StampedMsg : public Msg {
+        bool operator<(const StampedMsg& o) const {
+            return (rclcpp::Time { this->header.stamp } > rclcpp::Time { o.header.stamp });
+        }
+    };
+    std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
+    std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
 
-    std::array<LivoxMsg, 2> secondary_buffer;
-    std::atomic<bool> secondary_write_first_buffer;
-
-    LivoxMsg primary_lidar_message;
-    ImuMsg primary_imu_message;
-    bool is_primary_lidar_reveived = false;
-    bool is_primary_imu_reveived   = false;
-
-    LivoxMsg secondary_lidar_message;
-    ImuMsg secondary_imu_message;
-    bool is_secondary_lidar_received = false;
-    bool is_secondary_imu_received   = false;
-
-    bool enable_primary { false };
-    bool enable_secondary { false };
-    bool enable_record { false };
+    std::size_t lidar_queue_buffer_size = 2;
+    std::size_t imu_queue_buffer_size   = 40;
 
     /// @brief 单个雷达相关ROS2接口的包装
     struct LidarContext {
@@ -97,6 +92,8 @@ private:
 
         std::function<void(const std::unique_ptr<LivoxMsg>&)> livox_message_callback;
         std::function<void(const std::unique_ptr<ImuMsg>&)> imu_message_callback;
+
+        Eigen::Isometry3f transform = Eigen::Isometry3f::Identity();
 
         Eigen::Quaterniond rotation;
         Eigen::Translation3d translation;
@@ -124,6 +121,8 @@ private:
             livox_message_callback = livox_callback;
             imu_message_callback   = imu_callback;
         }
+
+        void update_transform(const Eigen::Isometry3f& t) { transform = t; }
 
     private:
         /// @brief 更新一帧点云消息，实际上就是进行了从雷达系到车辆正方向的变换
@@ -176,6 +175,23 @@ private:
 
     } primary_context, secondary_context;
 
+    std::array<LivoxMsg, 2> secondary_buffer;
+    std::atomic<bool> secondary_write_first_buffer;
+
+    LivoxMsg primary_lidar_message;
+    ImuMsg primary_imu_message;
+    bool is_primary_lidar_reveived = false;
+    bool is_primary_imu_reveived   = false;
+
+    LivoxMsg secondary_lidar_message;
+    ImuMsg secondary_imu_message;
+    bool is_secondary_lidar_received = false;
+    bool is_secondary_imu_received   = false;
+
+    bool enable_primary { false };
+    bool enable_secondary { false };
+    bool enable_record { false };
+
     // 传入的回调理应是 slam 的点云和 IMU 回调
     // 此方略若使用两个雷达，会造成畸变纠正的劣化
     void register_callback_with_combination(const auto& update_lidar, const auto& update_imu) {
@@ -207,58 +223,30 @@ private:
     }
 
     void register_callback_without_combination(const auto& update_lidar, const auto& update_imu) {
-        const auto handle_lidar_message = [this, update_lidar] {
-            auto primary_stamp   = rclcpp::Time { primary_lidar_message.header.stamp };
-            auto secondary_stamp = rclcpp::Time { secondary_lidar_message.header.stamp };
-            if (primary_stamp < secondary_stamp) {
-                update_lidar(std::make_unique<LivoxMsg>(primary_lidar_message));
-                update_lidar(std::make_unique<LivoxMsg>(secondary_lidar_message));
-                is_primary_lidar_reveived   = false;
-                is_secondary_lidar_received = false;
-            } else {
-                update_lidar(std::make_unique<LivoxMsg>(secondary_lidar_message));
-                update_lidar(std::make_unique<LivoxMsg>(primary_lidar_message));
-                is_primary_lidar_reveived   = false;
-                is_secondary_lidar_received = false;
+        const auto lidar_callback = [this, update_lidar](const std::unique_ptr<LivoxMsg>& msg) {
+            lidar_queue.emplace(StampedMsg<LivoxMsg> { *msg });
+            while (lidar_queue.size() > lidar_queue_buffer_size) {
+                const auto& old_msg = lidar_queue.top();
+                update_lidar(std::make_unique<LivoxMsg>(old_msg));
+                lidar_queue.pop();
             }
         };
-        const auto handle_imu_message = [this, update_imu] {
-            auto primary_stamp   = rclcpp::Time { primary_imu_message.header.stamp };
-            auto secondary_stamp = rclcpp::Time { secondary_imu_message.header.stamp };
-            if (primary_stamp < secondary_stamp) {
-                update_imu(std::make_unique<ImuMsg>(primary_imu_message));
-                update_imu(std::make_unique<ImuMsg>(secondary_imu_message));
-                is_primary_imu_reveived   = false;
-                is_secondary_imu_received = false;
-            } else {
-                update_imu(std::make_unique<ImuMsg>(secondary_imu_message));
-                update_imu(std::make_unique<ImuMsg>(primary_imu_message));
-                is_primary_imu_reveived   = false;
-                is_secondary_imu_received = false;
+        const auto imu_callback = [this, update_imu](const std::unique_ptr<ImuMsg>& msg) {
+            imu_queue.emplace(StampedMsg<ImuMsg> { *msg });
+            while (imu_queue.size() > imu_queue_buffer_size) {
+                const auto& old_msg = imu_queue.top();
+                update_imu(std::make_unique<ImuMsg>(old_msg));
+                imu_queue.pop();
             }
         };
-        primary_context.register_callback(
-            [=, this](const std::unique_ptr<LivoxMsg>& msg) {
-                primary_lidar_message     = *msg;
-                is_primary_lidar_reveived = true;
-                if (is_secondary_lidar_received) handle_lidar_message();
-            },
-            [=, this](const std::unique_ptr<ImuMsg>& msg) {
-                primary_imu_message     = *msg;
-                is_primary_imu_reveived = true;
-                if (is_secondary_imu_received) handle_imu_message();
-            });
-        secondary_context.register_callback(
-            [=, this](const std::unique_ptr<LivoxMsg>& msg) {
-                secondary_lidar_message     = *msg;
-                is_secondary_lidar_received = true;
-                if (is_primary_lidar_reveived) handle_lidar_message();
-            },
-            [=, this](const std::unique_ptr<ImuMsg>& msg) {
-                secondary_imu_message     = *msg;
-                is_secondary_imu_received = true;
-                if (is_primary_imu_reveived) handle_imu_message();
-            });
+
+        primary_context.register_callback(lidar_callback, imu_callback);
+        secondary_context.register_callback(lidar_callback, imu_callback);
+    }
+
+    Eigen::Isometry3f calibrate_lidars(const PointCloud& main, const PointCloud& other) {
+        (void)this;
+        return {};
     }
 };
 
