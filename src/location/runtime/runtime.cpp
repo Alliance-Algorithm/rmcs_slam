@@ -87,6 +87,10 @@ private:
     std::size_t maximum_pose_stamped_deque_size = 100;
     std::deque<geometry_msgs::msg::PoseStamped> pose_stamped_deque;
 
+    float filter_alpha = 0.1;
+    Eigen::Translation3f filtered_translation;
+    Eigen::Quaternionf filtered_orientation;
+
 public:
     void initialize(rclcpp::Node& node) {
         registration.initialize(node);
@@ -123,7 +127,7 @@ public:
 
         receive_pointcloud_size = p("registration.receive_size", std::size_t {});
         registration_radius     = p("registration.initial_map_radius", double {});
-        rclcpp_info("registration receive size: %zu", receive_pointcloud_size);
+        filter_alpha            = p("runtime.filter_alpha", float {});
 
         world_link = p("link.world", std::string {});
         slam_link  = p("link.slam", std::string {});
@@ -173,13 +177,17 @@ public:
                 util::convert_orientation(msg->pose.orientation, orientation);
                 util::convert_translation(msg->pose.position, translation);
 
+                auto current_translation =
+                    Eigen::Translation3f { initial_pose * translation.translation() };
+                auto current_orientation =
+                    Eigen::Quaternionf { initial_pose.rotation() * orientation };
+
+                apply_ema_pose_filter(current_translation, current_orientation,
+                    filtered_translation, filtered_orientation, filter_alpha);
+
                 auto posestamped = geometry_msgs::msg::PoseStamped {};
-                util::convert_orientation(
-                    Eigen::Quaternionf { initial_pose.rotation() * orientation },
-                    posestamped.pose.orientation);
-                util::convert_translation(
-                    Eigen::Translation3f { initial_pose * translation.translation() },
-                    posestamped.pose.position);
+                util::convert_orientation(filtered_orientation, posestamped.pose.orientation);
+                util::convert_translation(filtered_translation, posestamped.pose.position);
 
                 posestamped.header.frame_id = world_link;
                 posestamped.header.stamp    = msg->header.stamp;
@@ -370,6 +378,16 @@ private:
             search_result->points.push_back(pointcloud->at(index));
         }
         return search_result;
+    }
+
+    static void apply_ema_pose_filter(const Eigen::Translation3f& current_translation,
+        const Eigen::Quaternionf& current_rotation, Eigen::Translation3f& filtered_translation,
+        Eigen::Quaternionf& filtered_rotation, float alpha) {
+        // 平移部分滤波
+        filtered_translation.translation() = alpha * current_translation.translation()
+            + (1.0 - alpha) * filtered_translation.translation();
+        // 旋转部分滤波（四元数 Slerp 插值）
+        filtered_rotation = filtered_rotation.slerp(alpha, current_rotation);
     }
 };
 
