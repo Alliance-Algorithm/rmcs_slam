@@ -1,6 +1,3 @@
-// for rclcpp_info on initialize function
-#pragma clang diagnostic ignored "-Wformat-security"
-
 #include "synthesizer.hpp"
 #include "util/convert.hpp"
 #include "util/logger.hpp"
@@ -16,6 +13,12 @@
 #include <queue>
 
 using namespace rmcs;
+
+template <typename Msg> struct StampedMsg : public Msg {
+    bool operator<(const StampedMsg& o) const {
+        return (rclcpp::Time { this->header.stamp } > rclcpp::Time { o.header.stamp });
+    }
+};
 
 /// @brief 单个雷达相关ROS2接口的包装
 struct LidarContext {
@@ -259,12 +262,6 @@ private:
 
     std::array<LivoxMsg, 2> secondary_buffer;
     std::atomic<bool> secondary_write_first_buffer;
-
-    template <typename Msg> struct StampedMsg : public Msg {
-        bool operator<(const StampedMsg& o) const {
-            return (rclcpp::Time { this->header.stamp } > rclcpp::Time { o.header.stamp });
-        }
-    };
 
     std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
     std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
