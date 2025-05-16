@@ -39,7 +39,8 @@ struct RosUtil::Impl {
 
     void initialize(rclcpp::Node& node) {
 
-        const auto sensor_qos = rclcpp::QoS{rclcpp::KeepLast(5)}.reliable().durability_volatile();
+        const auto sensor_qos =
+            rclcpp::QoS { rclcpp::KeepLast(5) }.reliable().durability_volatile();
 
         cloud_registered_world_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
             topic::pointcloud_registerd_world, sensor_qos);
@@ -64,7 +65,7 @@ struct RosUtil::Impl {
         tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(node);
 
         using namespace std::chrono_literals;
-        update_timer      = node.create_wall_timer(10ms, [this] { update_function(); });
+        update_timer      = node.create_wall_timer(1ms, [this] { update_function(); });
         publish_map_timer = node.create_wall_timer(1s, [this] { publish_map_function(); });
 
         using Request    = std_srvs::srv::Trigger::Request::ConstSharedPtr;
@@ -84,8 +85,7 @@ struct RosUtil::Impl {
 
         using SwitchRequest  = std_srvs::srv::SetBool::Request::SharedPtr;
         using SwitchResponse = std_srvs::srv::SetBool::Response::SharedPtr;
-        record_switch        = node.create_service<std_srvs::srv::SetBool>(
-            "/rmcs_slam/switch_record",
+        record_switch = node.create_service<std_srvs::srv::SetBool>("/rmcs_slam/switch_record",
             [this](const SwitchRequest& request, const SwitchResponse& response) {
                 record_switch_callback(request->data);
                 response->success = true;
@@ -95,7 +95,7 @@ struct RosUtil::Impl {
 };
 
 RosUtil::RosUtil()
-    : pimpl(std::make_unique<Impl>()) {}
+    : pimpl(std::make_unique<Impl>()) { }
 
 RosUtil::~RosUtil() = default;
 

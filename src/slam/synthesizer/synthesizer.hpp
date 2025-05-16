@@ -4,6 +4,8 @@
 
 #include <Eigen/Dense>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
 #include <rclcpp/node.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -12,8 +14,10 @@ namespace rmcs {
 /// @brief 双激光雷达合成器
 class Synthesizer {
 public:
-    using LivoxMsg = livox_ros_driver2::msg::CustomMsg;
-    using ImuMsg   = sensor_msgs::msg::Imu;
+    using LivoxMsg   = livox_ros_driver2::msg::CustomMsg;
+    using ImuMsg     = sensor_msgs::msg::Imu;
+    using Point      = pcl::PointXYZ;
+    using PointCloud = pcl::PointCloud<Point>;
 
     explicit Synthesizer();
     ~Synthesizer();

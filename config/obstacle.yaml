@@ -5,8 +5,7 @@ rmcs_map:
             grid: "/rmcs_map/map/grid"
             cost: "/rmcs_map/map/cost"
             status: "/rmcs_map/status"
-            transformed_map: "/rmcs_map/transformed_map"
-            lidar: "/rmcs_slam/cloud_registered_body"
+            lidar: "/rmcs_slam/combination"
             # other
             node: "rmcs_map"
             # 把地图和雷达的变换统一, 此处默认雷达的点云
@@ -27,7 +26,7 @@ rmcs_map:
         lidar:
             # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
             # 以及未纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
-            livox_frames: 20
+            livox_frames: 2
         segmentation:
             # 点云分割中迭代的最大相邻点的距离
             # 这个距离内的点云被视作统一平面内
