@@ -1,4 +1,6 @@
 #include "ros_util.hpp"
+#include "util/service.hpp"
+#include "util/string.hpp"
 
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -26,7 +28,7 @@ struct RosUtil::Impl {
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_trigger;
     std::function<void(void)> reset_function;
 
-    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr record_switch;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr record_switch_service;
     std::function<void(bool)> record_switch_callback;
 
     rclcpp::TimerBase::SharedPtr update_timer;
@@ -43,24 +45,25 @@ struct RosUtil::Impl {
             rclcpp::QoS { rclcpp::KeepLast(5) }.reliable().durability_volatile();
 
         cloud_registered_world_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
-            topic::pointcloud_registerd_world, sensor_qos);
+            string::slam::cloud_world_topic, sensor_qos);
 
         cloud_registered_body_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
-            topic::pointcloud_registerd_body, sensor_qos);
+            string::slam::cloud_body_topic, sensor_qos);
 
         cloud_effected_world_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
-            topic::pointcloud_effected_world, sensor_qos);
+            string::slam::cloud_effected_world_topic, sensor_qos);
 
         constructed_map_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
-            topic::constructed_map, sensor_qos);
+            string::slam::constructed_map_topic, sensor_qos);
 
-        pose_publisher =
-            node.create_publisher<geometry_msgs::msg::PoseStamped>(topic::pose, sensor_qos);
+        pose_publisher = node.create_publisher<geometry_msgs::msg::PoseStamped>(
+            string::slam::pose_topic, sensor_qos);
 
-        odometry_publisher =
-            node.create_publisher<nav_msgs::msg::Odometry>(topic::odometry, sensor_qos);
+        odometry_publisher = node.create_publisher<nav_msgs::msg::Odometry>( //
+            string::slam::odometry_topic, sensor_qos);
 
-        path_publisher = node.create_publisher<nav_msgs::msg::Path>(topic::path, sensor_qos);
+        path_publisher = node.create_publisher<nav_msgs::msg::Path>( //
+            string::slam::path_topic, sensor_qos);
 
         tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(node);
 
@@ -68,25 +71,23 @@ struct RosUtil::Impl {
         update_timer      = node.create_wall_timer(1ms, [this] { update_function(); });
         publish_map_timer = node.create_wall_timer(1s, [this] { publish_map_function(); });
 
-        using Request    = std_srvs::srv::Trigger::Request::ConstSharedPtr;
-        using Response   = std_srvs::srv::Trigger::Response::SharedPtr;
         map_save_trigger = node.create_service<std_srvs::srv::Trigger>(
-            "/rmcs_slam/map_save", [this, &node](const Request&, const Response& p2) {
+            string::slam::save_map_service_name, TRIGGER_CALLBACK(this) {
                 map_save_function();
-                p2->success = true;
-                p2->message = "ros_util handled";
+                response->success = true;
+                response->message = "ros_util handled";
             });
         reset_trigger = node.create_service<std_srvs::srv::Trigger>(
-            "/rmcs_slam/reset", [this, &node](const Request&, const Response& p2) {
+            string::slam::reset_service_name, TRIGGER_CALLBACK(this) {
                 reset_function();
-                p2->success = true;
-                p2->message = "ros_util handled";
+                response->success = true;
+                response->message = "ros_util handled";
             });
 
-        using SwitchRequest  = std_srvs::srv::SetBool::Request::SharedPtr;
-        using SwitchResponse = std_srvs::srv::SetBool::Response::SharedPtr;
-        record_switch = node.create_service<std_srvs::srv::SetBool>("/rmcs_slam/switch_record",
-            [this](const SwitchRequest& request, const SwitchResponse& response) {
+        using SwitchRequest   = std_srvs::srv::SetBool::Request::SharedPtr;
+        using SwitchResponse  = std_srvs::srv::SetBool::Response::SharedPtr;
+        record_switch_service = node.create_service<std_srvs::srv::SetBool>(
+            string::slam::switch_record_service_name, SET_BOOL_CALLBACK(this) {
                 record_switch_callback(request->data);
                 response->success = true;
                 response->message = "ros_util handled";

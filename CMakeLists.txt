@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_BUILD_TYPE "Release")
 
-# open-mp 配置
+# OpenMp 配置
 include(ProcessorCount)
 processorcount(N)
 message("处理器线程数: ${N}")
@@ -27,13 +27,11 @@ find_package(OpenMP QUIET)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 
-
 # ROS2 相关依赖
 find_package(ament_cmake REQUIRED)
 set(dependencies
     rclcpp
     rclcpp_components
-    rosbag2_cpp
     geometry_msgs
     nav_msgs
     sensor_msgs
@@ -56,9 +54,10 @@ endif()
 # 第三方依赖
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS imgproc)
+find_package(Boost REQUIRED COMPONENTS system)
 find_package(PCL REQUIRED COMPONENTS common io segmentation filters)
 
-# fast-gicp 构建
+# FastGicp 构建
 add_subdirectory(src/third-party/fast_gicp)
 include_directories(src/third-party/fast_gicp/include/)
 
@@ -76,24 +75,22 @@ ament_export_dependencies(
     rosidl_default_runtime
 )
 
-# util 工具静态库构建
+# Util 工具静态库构建
 file(GLOB_RECURSE UTIL_SRC CONFIGURE_DEPENDS src/util/*.cpp)
 add_library(
     util STATIC
     ${UTIL_SRC}
-)
-target_link_directories(
-    util PRIVATE
-    ${PCL_INCLUDE_DIRS}
 )
 target_link_libraries(
     util PRIVATE
     pcl_common
     pcl_segmentation
     pcl_filters
+    rclcpp::rclcpp
+    ${std_srvs_TARGETS}
 )
 
-# rmcs-slam 进程
+# Slam 进程
 file(GLOB_RECURSE SLAM_SRC CONFIGURE_DEPENDS src/slam/*.cpp)
 add_executable(
     slam
@@ -119,9 +116,10 @@ target_link_libraries(
     pcl_common
     pcl_io
     ${cpp_typesupport_target}
+    Boost::system
 )
 
-# rmcs-map 进程
+# Obstacle 进程
 file(GLOB_RECURSE OBSTACLE_SRC CONFIGURE_DEPENDS src/obstacle/*.cpp)
 add_executable(
     obstacle
@@ -139,7 +137,7 @@ target_link_libraries(
     ${OpenCV_LIBRARIES}
 )
 
-# rmcs-location 进程
+# Location 进程
 file(GLOB_RECURSE LOCATION_SRC CONFIGURE_DEPENDS src/location/*.cpp)
 add_executable(
     location

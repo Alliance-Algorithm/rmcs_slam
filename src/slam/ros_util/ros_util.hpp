@@ -16,16 +16,6 @@ namespace rmcs {
 class RosUtil {
     RMCS_PIMPL_DEFINTION(RosUtil)
 
-    struct topic {
-        static constexpr auto pointcloud_registerd_world = "/rmcs_slam/cloud_registered_world";
-        static constexpr auto pointcloud_registerd_body  = "/rmcs_slam/cloud_registered_body";
-        static constexpr auto pointcloud_effected_world  = "/rmcs_slam/cloud_effected";
-        static constexpr auto constructed_map            = "/rmcs_slam/constructed_map";
-        static constexpr auto pose                       = "/rmcs_slam/pose";
-        static constexpr auto odometry                   = "/rmcs_slam/odometry";
-        static constexpr auto path                       = "/rmcs_slam/path";
-    };
-
 public:
     void initialize(rclcpp::Node& node);
 

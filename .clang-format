@@ -11,6 +11,7 @@ TabWidth: 4
 
 # 访问修饰符（public）等靠左对齐
 AccessModifierOffset: -4
+AlignTrailingComments: true
 
 # 大括号的换行规则
 BreakBeforeBraces: Attach

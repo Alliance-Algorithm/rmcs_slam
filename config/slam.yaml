@@ -5,8 +5,6 @@ rmcs_slam:
     filter_size_map: 0.5
     cube_side_length: 1000.0
     map_file_path: "scans.pcd"
-    record_path: "/workspaces/RMCS/develop_ws/bag/"
-    combination_lidar_topic: "/rmcs_slam/combination"
 
     primary_lidar:
       enable: true
@@ -34,6 +32,15 @@ rmcs_slam:
       yaw: 179.33
       pitch: -0.57
       roll: -51.38
+
+    combination_lidar_topic: "/rmcs_slam/combination"
+
+    # 是否启用录制功能，启动时，触发 /rmcs_slam/switch_record 即可开关录制
+    record:
+      # NOTE: 时刻注意开关，小心爆硬盘
+      enable: true
+      # 注意给定一个有权限操作的目录，否则将会触发异常退出
+      path: "rmcs-record/"
 
     common:
       # only turn on when external time synchronization is really not possible

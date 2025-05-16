@@ -212,7 +212,7 @@ public:
         static_transform_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
 
         // 用于重启和初始化整个系统的服务，该服务会自动将 SLAM 也重启
-        const auto service_name { "/rmcs_location/initialize" };
+        const auto service_name { string::location::initialize_service_name };
         const auto service_callback = TRIGGER_CALLBACK(&, this) {
             const auto callback = [&](bool success, const std::string& msg) {
                 if ((response->success = success) == true) {

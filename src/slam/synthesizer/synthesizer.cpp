@@ -7,11 +7,12 @@
 #include "util/parameter.hpp"
 #include "util/pointcloud.hpp"
 
+#include <boost/process.hpp>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <rosbag2_cpp/writer.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include <filesystem>
 #include <queue>
 
 using namespace rmcs;
@@ -147,13 +148,20 @@ public:
         if (!enable_primary && !enable_secondary)
             throw util::runtime_error("at least enable one lidar");
 
+        record_enable         = p("record.enable", bool {});
+        record_path           = p("record.path", std::string {});
+        primary_lidar_topic   = p("primary_lidar.lidar_topic", std::string {});
+        primary_imu_topic     = p("primary_lidar.imu_topic", std::string {});
+        secondary_lidar_topic = p("secondary_lidar.lidar_topic", std::string {});
+        secondary_imu_topic   = p("secondary_lidar.imu_topic", std::string {});
+
         combination_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
             p("combination_lidar_topic", std::string {}), 1);
 
         const auto initialize_context = [&](LidarContext& context, const std::string& index) {
             const auto enable      = p(index + "_lidar.enable", bool {});
-            const auto lidar_topic = p(index + "_lidar.lidar_topic", std::string { "" });
-            const auto imu_topic   = p(index + "_lidar.imu_topic", std::string { "" });
+            const auto lidar_topic = p(index + "_lidar.lidar_topic", std::string {});
+            const auto imu_topic   = p(index + "_lidar.imu_topic", std::string {});
             const auto x           = p(index + "_lidar.x", double {});
             const auto y           = p(index + "_lidar.y", double {});
             const auto z           = p(index + "_lidar.z", double {});
@@ -195,12 +203,56 @@ public:
         }
     }
 
+    void start_recording() {
+        if (!record_enable) {
+            rclcpp_info("record is disable, return");
+            return;
+        }
+
+        if (record_process) stop_recording();
+
+        rclcpp_info("record start on %s", record_path.c_str());
+        if (!std::filesystem::exists(record_path)) //
+            std::filesystem::create_directories(record_path);
+
+        record_process = std::make_unique<boost::process::child>( //
+            boost::process::search_path("ros2"),                  //
+            "bag", "record",                                      //
+            primary_lidar_topic, primary_imu_topic,               //
+            secondary_lidar_topic, secondary_imu_topic,           //
+            boost::process::start_dir(record_path),               //
+            boost::process::std_out > boost::process::null,       //
+            boost::process::std_err > boost::process::null);      //
+    }
+
+    void stop_recording() {
+        if (!record_enable) {
+            rclcpp_info("record is disable, return");
+            return;
+        }
+
+        if (!record_process || !record_process->running()) return;
+
+        rclcpp_info("stop record process now");
+        ::kill(record_process->native_handle(), SIGINT);
+        record_process->wait();
+        record_process = nullptr;
+    }
+
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
 
     LidarContext primary_context, secondary_context;
 
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> combination_publisher;
+
+    std::unique_ptr<boost::process::child> record_process;
+    bool record_enable = false;
+    std::string record_path;
+    std::string primary_lidar_topic;
+    std::string primary_imu_topic;
+    std::string secondary_lidar_topic;
+    std::string secondary_imu_topic;
 
     bool enable_primary { false };
     bool enable_secondary { false };
@@ -288,4 +340,7 @@ void Synthesizer::register_callback(
     pimpl->register_callback(livox_callback, imu_callback);
 }
 
-void Synthesizer::switch_record(bool on) { }
+void Synthesizer::switch_record(bool on) {
+    if (on) pimpl->start_recording();
+    else pimpl->stop_recording();
+}
