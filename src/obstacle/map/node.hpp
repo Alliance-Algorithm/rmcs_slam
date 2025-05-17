@@ -182,7 +182,10 @@ public:
     }
 
     Node& operator()(std::size_t row, std::size_t col) {
-        assert(ros < width && col < width);
+        if (row >= width() || col >= width())
+            throw util::runtime_error( //
+                "Error: ObstacleMap::operator()(std::size_t row, std::size_t col)");
+
         return internal_nodes[row][col];
     }
 

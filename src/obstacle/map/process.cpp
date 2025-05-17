@@ -64,7 +64,7 @@ std::unique_ptr<ObstacleMap> Process::generate_node_map(
         const auto f = [this](float v) -> std::size_t {
             return std::clamp(
                 static_cast<std::size_t>((v + (pimpl->map_width / 2.)) / pimpl->resolution),
-                std::size_t { 0 }, pimpl->side_num);
+                std::size_t { 0 }, pimpl->side_num - 1);
         };
         const auto x = f(point.x), y = f(point.y);
         visited_node.insert(std::make_pair(x, y));
