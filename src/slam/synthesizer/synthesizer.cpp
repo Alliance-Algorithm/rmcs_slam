@@ -151,7 +151,7 @@ public:
         if (!enable_primary && !enable_secondary)
             throw util::runtime_error("at least enable one lidar");
 
-        record_enable         = p("record.enable", bool {});
+        enable_record         = p("record.enable", bool {});
         record_path           = p("record.path", std::string {});
         primary_lidar_topic   = p("primary_lidar.lidar_topic", std::string {});
         primary_imu_topic     = p("primary_lidar.imu_topic", std::string {});
@@ -207,7 +207,7 @@ public:
     }
 
     void start_recording() {
-        if (!record_enable) {
+        if (!enable_record) {
             rclcpp_info("record is disable, return");
             return;
         }
@@ -229,7 +229,7 @@ public:
     }
 
     void stop_recording() {
-        if (!record_enable) {
+        if (!enable_record) {
             rclcpp_info("record is disable, return");
             return;
         }
@@ -242,23 +242,26 @@ public:
         record_process = nullptr;
     }
 
+    void set_running(bool enable) { enable_running = enable; }
+
 private:
     RMCS_INITIALIZE_LOGGER("rmcs-slam");
 
     LidarContext primary_context, secondary_context;
 
+    bool enable_running   = false;
+    bool enable_record    = false;
+    bool enable_primary   = false;
+    bool enable_secondary = false;
+
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> combination_publisher;
 
     std::unique_ptr<boost::process::child> record_process;
-    bool record_enable = false;
     std::string record_path;
     std::string primary_lidar_topic;
     std::string primary_imu_topic;
     std::string secondary_lidar_topic;
     std::string secondary_imu_topic;
-
-    bool enable_primary { false };
-    bool enable_secondary { false };
 
     std::array<LivoxMsg, 2> secondary_buffer;
     std::atomic<bool> secondary_write_first_buffer;
@@ -334,7 +337,9 @@ void Synthesizer::initialize(rclcpp::Node& node) { //
 void Synthesizer::register_callback(
     const std::function<void(const std::unique_ptr<LivoxMsg>&)>& livox_callback,
     const std::function<void(const std::unique_ptr<ImuMsg>&)>& imu_callback) {
-    pimpl->register_callback(livox_callback, imu_callback);
+    pimpl->register_callback( //
+        [=](const std::unique_ptr<LivoxMsg>& msg) { livox_callback(msg); },
+        [=](const std::unique_ptr<ImuMsg>& msg) { imu_callback(msg); });
 }
 
 void Synthesizer::switch_record(bool on) {
