@@ -51,7 +51,7 @@ struct Node::Impl {
 
     void pointcloud_subscription_callback(
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
-        const std_msgs::msg::Header& header, const Callback& process) {
+        const std_msgs::msg::Header& header) {
 
         // 去除盲区点云
         auto crop_box = pcl::CropBox<Point> {};
@@ -65,15 +65,18 @@ struct Node::Impl {
         // 补偿多帧叠加的位移偏差
         auto orientation = Eigen::Quaternionf::Identity();
         auto translation = Eigen::Translation3f::Identity();
-        try {
-            auto transform =
-                transform_buffer->lookupTransform("lidar_init", "lidar_link", tf2::TimePointZero);
-            util::convert_orientation(transform.transform.rotation, orientation);
-            util::convert_translation(transform.transform.translation, translation.translation());
-        } catch (const tf2::TransformException& e) {
-            orientation = Eigen::Quaternionf::Identity();
-            translation = Eigen::Translation3f::Identity();
-            rclcpp_warn("%s", e.what());
+        if (pointcloud_frame_limit > 2) {
+            try {
+                auto transform = transform_buffer->lookupTransform(
+                    "lidar_init", "lidar_link", tf2::TimePointZero);
+                util::convert_orientation(transform.transform.rotation, orientation);
+                util::convert_translation(
+                    transform.transform.translation, translation.translation());
+            } catch (const tf2::TransformException& e) {
+                orientation = Eigen::Quaternionf::Identity();
+                translation = Eigen::Translation3f::Identity();
+                rclcpp_warn("%s", e.what());
+            }
         }
         auto& pointcloud_frame = pointcloud_frames.at(pointcloud_frame_index);
         pointcloud_frame.clear();
@@ -89,7 +92,7 @@ struct Node::Impl {
         pcl::transformPointCloud(*pointcloud_mixed, *pointcloud_mixed_yaw_link,
             Eigen::Affine3f { translation * orientation }.inverse());
 
-        process(pointcloud_mixed_yaw_link, header);
+        pointcloud_process(pointcloud_mixed_yaw_link, header);
 
         if (++pointcloud_frame_index >= pointcloud_frame_limit) pointcloud_frame_index = 0;
     }
@@ -132,8 +135,7 @@ struct Node::Impl {
         auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
         livox_to_pcl(msg->points, *pointcloud);
 
-        pointcloud_subscription_callback(pointcloud, msg->header,
-            [this](const auto& msg, const auto& header) { pointcloud_process(msg, header); });
+        pointcloud_subscription_callback(pointcloud, msg->header);
     }
 
     void pointcloud2_subscription_callback(
@@ -142,8 +144,7 @@ struct Node::Impl {
         auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
         pc2_to_pcl(*msg, *pointcloud);
 
-        pointcloud_subscription_callback(pointcloud, msg->header,
-            [this](const auto& msg, const auto& header) { pointcloud_process(msg, header); });
+        pointcloud_subscription_callback(pointcloud, msg->header);
     }
 
     void publish_transform(geometry_msgs::msg::TransformStamped& transform) {

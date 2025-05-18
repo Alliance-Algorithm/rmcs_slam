@@ -37,17 +37,20 @@ rmcs_map:
             # 栅格地图的分辨率，单位 m
             resolution: 0.02
             # 栅格地图边长，单位 m
-            grid_width: 10.1
+            map_width: 10.1
             # 雷达的盲区，球形直径
             lidar_blind: 0.8
             # 有效点数量阈值，出现在网格的点大于该数才视作有效
             points_limit: 5
             # 有效点高度区间阈值，障碍物高度区间大于此值才视作有效
             height_limit: 0.05
+            # 影响半径，一个点的高度信息可以影响的圆形区域
+            # 为了弥补点云密度不够的补偿
+            influence_radius: 0.04
         filter:
             # 预先膨胀，为了更好的闭合障碍物
-            pre_dilate_size: 5
-            pre_dilate_times: 4
+            pre_dilate_size: 20
+            pre_dilate_times: 1
             # 闭合，拟补激光雷达点云的缺口
             pre_close_size: 5
             pre_close_times: 1

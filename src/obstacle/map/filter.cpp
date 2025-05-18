@@ -61,15 +61,14 @@ void filter_map(ObstacleMap& node_map) {
     static const auto pre_close_times  = param::get<int>("filter.pre_close_times");
     static const auto dilate_size      = param::get<int>("filter.dilate_size");
 
-    auto mat =
-        cv::Mat(static_cast<int>(node_map.width()), static_cast<int>(node_map.width()), CV_8UC1);
+    auto width = static_cast<int>(node_map.width());
+    auto mat   = cv::Mat(width, width, CV_8UC1);
+
+    node_map.foreach ([&mat](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
+        mat.at<int8_t>(int(x), int(y)) = node.value;
+    });
 
     auto element = cv::Mat();
-
-    for (auto x = 0; x < node_map.width(); x++)
-        for (auto y = 0; y < node_map.width(); y++) {
-            mat.at<int8_t>(x, y) = node_map(x, y).value;
-        }
 
     // dilate
     if (pre_dilate_size != 0 && pre_dilate_times != 0) {
@@ -91,10 +90,9 @@ void filter_map(ObstacleMap& node_map) {
         cv::erode(mat, mat, element);
     }
 
-    for (auto x = 0; x < node_map.width(); x++)
-        for (auto y = 0; y < node_map.width(); y++) {
-            node_map(x, y).value = mat.at<int8_t>(x, y);
-        }
+    node_map.foreach ([&mat](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
+        if (auto value = mat.at<int8_t>(int(x), int(y)); true) node.value = value;
+    });
 }
 
 } // namespace rmcs

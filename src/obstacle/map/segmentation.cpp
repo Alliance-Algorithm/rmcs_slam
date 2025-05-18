@@ -7,6 +7,7 @@
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
 struct Segmentation::Impl {
@@ -23,7 +24,7 @@ struct Segmentation::Impl {
 Segmentation::Segmentation()
     : pimpl(std::make_unique<Impl>()) {
     pimpl->segmentation_point_distance = param::get<double>("segmentation.point_distance");
-    pimpl->limit_distance              = param::get<double>("grid.grid_width");
+    pimpl->limit_distance              = param::get<double>("grid.map_width");
 
     auto& segmentation = pimpl->segmentation;
     segmentation.setOptimizeCoefficients(true);
@@ -68,6 +69,12 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
 
     auto pointcloud_removed_xy = std::make_shared<PointCloud>();
     removal.filter(*pointcloud_removed_xy);
+
+    auto resolution = param::get<float>("grid.resolution");
+    auto voxel_grid = pcl::VoxelGrid<PointCloud::PointType> {};
+    voxel_grid.setLeafSize(Eigen::Vector4f { resolution, resolution, resolution, 1.f });
+    voxel_grid.setInputCloud(pointcloud_removed_xy);
+    voxel_grid.filter(*pointcloud_removed_xy);
 
     auto pass_through = pcl::PassThrough<PointCloud::PointType> {};
     pass_through.setInputCloud(pointcloud_removed_xy);

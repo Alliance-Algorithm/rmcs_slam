@@ -44,9 +44,65 @@ public:
             nodes.resize(width, Node {});
     }
 
+    Node& at(std::size_t x, std::size_t y) { return internal_nodes[x][y]; }
+    Node& operator()(std::size_t x, std::size_t y) { return at(x, y); }
+
+    const Node& at(std::size_t x, std::size_t y) const { return internal_nodes[x][y]; }
+    const Node& operator()(std::size_t x, std::size_t y) const { return at(x, y); }
+
+    using NoneConstCallback = std::function<void(std::size_t, std::size_t, Node&)>;
+    void foreach (const NoneConstCallback& callback) {
+        for (std::size_t x = 0; x < width(); ++x) {
+            for (std::size_t y = 0; y < width(); ++y) {
+                callback(x, y, (*this)(x, y));
+            }
+        }
+    }
+    using ConstCallback = std::function<void(std::size_t, std::size_t, const Node&)>;
+    void foreach (const ConstCallback& callback) const {
+        for (std::size_t x = 0; x < width(); ++x) {
+            for (std::size_t y = 0; y < width(); ++y) {
+                callback(x, y, (*this)(x, y));
+            }
+        }
+    }
+
     void update_node(std::size_t x, std::size_t y, int8_t v) {
         assert(ax < width() && ay < width());
         internal_nodes[x][y].value = v;
+    }
+
+    void update_round_area(std::size_t x, std::size_t y, std::size_t expand,
+        const std::function<void(std::size_t, std::size_t, Node&)>& apply) {
+
+        std::invoke(apply, x, y, at(x, y));
+
+        std::size_t x_min = (x >= expand) ? (x - expand) : 0;
+        std::size_t x_max = std::min(x + expand, width() - 1);
+        std::size_t y_min = (y >= expand) ? (y - expand) : 0;
+        std::size_t y_max = std::min(y + expand, width() - 1);
+
+        const int64_t expand_sq = static_cast<int64_t>(expand * expand);
+
+        for (std::size_t _x = x_min; _x <= x_max; ++_x) {
+            for (std::size_t _y = y_min; _y <= y_max; ++_y) {
+                const int64_t dx = static_cast<int64_t>(_x) - static_cast<int64_t>(x);
+                const int64_t dy = static_cast<int64_t>(_y) - static_cast<int64_t>(y);
+
+                const int64_t distance_sq = dx * dx + dy * dy;
+                if (distance_sq <= expand_sq) std::invoke(apply, _x, _y, at(_x, _y));
+            }
+        }
+    }
+
+    void update_node_value(std::size_t x, std::size_t y, std::size_t expand, int8_t v) {
+        update_round_area(
+            x, y, expand, [v](std::size_t, std::size_t, Node& node) { node.value = v; });
+    }
+
+    void update_node_height(std::size_t x, std::size_t y, std::size_t expand, double height) {
+        update_round_area(x, y, expand,
+            [height](std::size_t, std::size_t, Node& node) { node.update_height_table(height); });
     }
 
     void ray_cast_with_infinty_unknown() {
@@ -67,24 +123,25 @@ public:
                     }
                 }
 
-                const auto k1 = (d(y) - d(oy)) / (d(x) - d(ox));
-                const auto b1 = d(oy) - k1 * d(ox);
-                const auto f1 = [=](std::size_t _x) -> double { return k1 * d(_x) + b1; };
-
-                auto [x_min, x_max] = std::minmax(ox, x);
-                for (auto step = x_min; step < x_max; step++) {
-                    auto& node1 = data()[step][static_cast<std::size_t>(f1(step))];
-                    if (node1.value == -1) node1.value = 0;
-                }
-
-                const auto k2 = (d(x) - d(ox)) / (d(y) - d(oy));
-                const auto b2 = d(ox) - k2 * d(oy);
-                const auto f2 = [=](std::size_t _y) -> double { return k2 * d(_y) + b2; };
-
-                auto [y_min, y_max] = std::minmax(oy, y);
-                for (auto step = y_min; step < y_max; step++) {
-                    auto& node1 = data()[static_cast<std::size_t>(f2(step))][step];
-                    if (node1.value == -1) node1.value = 0;
+                if (const auto k1 = (d(y) - d(oy)) / (d(x) - d(ox)); std::abs(k1) < 1) {
+                    const auto b1     = d(oy) - k1 * d(ox);
+                    const auto f1     = [=](std::size_t _x) -> double { return k1 * d(_x) + b1; };
+                    const auto error1 = x > ox ? +1 : -1;
+                    for (auto step = ox; step != x; step += error1) {
+                        auto& node = data()[step][static_cast<std::size_t>(f1(step))];
+                        if (node.value > 0) break;
+                        if (node.value == -1) node.value = 0;
+                    }
+                } else {
+                    const auto k2     = (d(x) - d(ox)) / (d(y) - d(oy));
+                    const auto b2     = d(ox) - k2 * d(oy);
+                    const auto f2     = [=](std::size_t _y) -> double { return k2 * d(_y) + b2; };
+                    const auto error2 = y > oy ? +1 : -1;
+                    for (auto step = oy; step != y; step += error2) {
+                        auto& node = data()[static_cast<std::size_t>(f2(step))][step];
+                        if (node.value > 0) break;
+                        if (node.value == -1) node.value = 0;
+                    }
                 }
             }
     }
@@ -179,14 +236,6 @@ public:
                 if (std::pow(error_x, 2) + std::pow(error_y, 2) <= std::pow(radius, 2))
                     this->update_node(x, y, v);
             }
-    }
-
-    Node& operator()(std::size_t row, std::size_t col) {
-        if (row >= width() || col >= width())
-            throw util::runtime_error( //
-                "Error: ObstacleMap::operator()(std::size_t row, std::size_t col)");
-
-        return internal_nodes[row][col];
     }
 
     NodesMatrix& data() { return internal_nodes; }

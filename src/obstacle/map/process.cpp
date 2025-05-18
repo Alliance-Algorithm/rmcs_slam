@@ -7,6 +7,7 @@
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/point_cloud.h>
 #include <rclcpp/logging.hpp>
 
@@ -32,16 +33,6 @@ template <> struct hash<std::pair<std::size_t, std::size_t>> {
 } // namespace std
 
 struct Process::Impl {
-    explicit Impl() {
-        height_limit  = param::get<float>("grid.height_limit");
-        ground_height = param::get<float>("grid.ground_height");
-        resolution    = param::get<float>("grid.resolution");
-        lidar_blind   = param::get<float>("grid.lidar_blind");
-        map_width     = param::get<float>("grid.grid_width");
-        points_limit  = param::get<std::size_t>("grid.points_limit");
-        side_num      = static_cast<int>(map_width / resolution);
-    }
-
     std::size_t points_limit;
     std::size_t side_num;
     float height_limit;
@@ -49,27 +40,45 @@ struct Process::Impl {
     float resolution;
     float lidar_blind;
     float map_width;
+    float influence_radius;
+
+    explicit Impl() {
+        height_limit     = param::get<float>("grid.height_limit");
+        ground_height    = param::get<float>("grid.ground_height");
+        resolution       = param::get<float>("grid.resolution");
+        lidar_blind      = param::get<float>("grid.lidar_blind");
+        map_width        = param::get<float>("grid.map_width");
+        points_limit     = param::get<std::size_t>("grid.points_limit");
+        influence_radius = param::get<float>("grid.influence_radius");
+        side_num         = static_cast<int>(map_width / resolution);
+    }
 };
 
 std::unique_ptr<ObstacleMap> Process::generate_node_map(
     const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud) {
-    using PointType = std::remove_cvref<decltype((*pointcloud)[0])>::type;
+    using Point     = std::remove_cvref<decltype((*pointcloud)[0])>::type;
+    auto resolution = pimpl->resolution;
+    auto map_width  = pimpl->map_width;
+    auto side_num   = pimpl->side_num;
 
     // 加载可视域内节点的高度信息
     // 使用过的节点，用于二次更新时减少循环次数
     auto visited_node = std::unordered_set<std::pair<std::size_t, std::size_t>> {};
     // 障碍地图
-    auto obstacle_map = ObstacleMap { pimpl->side_num };
+    auto obstacle_map = ObstacleMap { side_num };
     for (const auto point : *pointcloud) {
-        const auto f = [this](float v) -> std::size_t {
-            return std::clamp(
-                static_cast<std::size_t>((v + (pimpl->map_width / 2.)) / pimpl->resolution),
-                std::size_t { 0 }, pimpl->side_num - 1);
+        const auto f = [&](float v) -> std::size_t {
+            return std::clamp(static_cast<std::size_t>((v + (map_width / 2.)) / resolution),
+                std::size_t { 0 }, side_num - 1);
         };
         const auto x = f(point.x), y = f(point.y);
-        visited_node.insert(std::make_pair(x, y));
 
-        obstacle_map(x, y).update_height_table(point.z);
+        const auto expand = static_cast<std::size_t>(pimpl->influence_radius / pimpl->resolution);
+        obstacle_map.update_round_area(
+            x, y, expand, [&](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
+                visited_node.insert(std::make_pair(x, y));
+                node.update_height_table(point.z);
+            });
     }
     // 二次更新，加载障碍物信息
     for (const auto [x, y] : visited_node) {
