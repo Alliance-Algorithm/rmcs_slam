@@ -7,7 +7,9 @@
 #include "process/preprocess.hpp"
 #include "ros_util/ros_util.hpp"
 #include "synthesizer/synthesizer.hpp"
+#include "util/convert.hpp"
 #include "util/parameter.hpp"
+#include "util/string.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -80,7 +82,7 @@ struct SLAM::Impl {
             [this](bool on) { synthesizer.switch_record(on); });
 
         current_path.header.stamp    = node.get_clock()->now();
-        current_path.header.frame_id = "lidar_init";
+        current_path.header.frame_id = string::slam_link;
 
         fov_degree_calculated = (fov_degree + 10.0) > 179.9 ? 179.9 : (fov_degree + 10.0);
         half_fov_cos          = std::cos((fov_degree_calculated) * 0.5 * std::numbers::pi / 180.0);
@@ -289,7 +291,7 @@ struct SLAM::Impl {
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(*pointcloud_world, msg);
         msg.header.stamp    = get_ros_time(lidar_end_timestamp);
-        msg.header.frame_id = "lidar_init";
+        msg.header.frame_id = string::slam_link;
 
         ros_utility.publish_pointcloud_registerd_world(msg);
     }
@@ -305,7 +307,7 @@ struct SLAM::Impl {
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(*pointcloud_imu, msg);
         msg.header.stamp    = get_ros_time(lidar_end_timestamp);
-        msg.header.frame_id = "lidar_link";
+        msg.header.frame_id = string::robot_link;
 
         ros_utility.publish_pointcloud_registerd_body(msg);
     }
@@ -320,7 +322,7 @@ struct SLAM::Impl {
         sensor_msgs::msg::PointCloud2 msg;
         pcl::toROSMsg(*pointcloud_effect, msg);
         msg.header.stamp    = get_ros_time(lidar_end_timestamp);
-        msg.header.frame_id = "lidar_init";
+        msg.header.frame_id = string::slam_link;
 
         ros_utility.publish_pointcloud_effect_world(msg);
     }
@@ -351,15 +353,15 @@ struct SLAM::Impl {
         pcl::toROSMsg(*filtered_cloud, msg);
 
         msg.header.stamp    = get_ros_time(lidar_end_timestamp);
-        msg.header.frame_id = "lidar_init";
+        msg.header.frame_id = string::slam_link;
 
         ros_utility.publish_constructed_map(msg);
     }
 
     void publish_odometry() {
         // odometry
-        current_odometry.header.frame_id = "lidar_init";
-        current_odometry.child_frame_id  = "lidar_link";
+        current_odometry.header.frame_id = string::slam_link;
+        current_odometry.child_frame_id  = string::robot_link;
 
         current_odometry.header.stamp = get_ros_time(lidar_end_timestamp);
         load_current_pose_stamp(current_odometry.pose);
@@ -378,32 +380,26 @@ struct SLAM::Impl {
             current_odometry.pose.covariance[i * 6 + 5] = P(k, 2);
         }
 
-        // tf tree
-        geometry_msgs::msg::TransformStamped stamp;
+        // 更新 TF 树，发布机器人位姿到 SLAM 初始点的变换
+        auto t = Eigen::Translation3d(                 //
+            current_odometry.pose.pose.position.x,     //
+            current_odometry.pose.pose.position.y,     //
+            current_odometry.pose.pose.position.z);    //
+        auto r = Eigen::Quaterniond(                   //
+            current_odometry.pose.pose.orientation.w,  //
+            current_odometry.pose.pose.orientation.x,  //
+            current_odometry.pose.pose.orientation.y,  //
+            current_odometry.pose.pose.orientation.z); //
+        {
+            geometry_msgs::msg::TransformStamped stamp;
+            stamp.header.frame_id = string::slam_link;
+            stamp.child_frame_id  = string::robot_link;
 
-        stamp.header.frame_id = "lidar_link";
-        stamp.child_frame_id  = "lidar_init";
+            util::convert_translation(t, stamp.transform.translation);
+            util::convert_orientation(r, stamp.transform.rotation);
 
-        auto t = Eigen::Affine3d(Eigen::Translation3d(current_odometry.pose.pose.position.x,
-            current_odometry.pose.pose.position.y, current_odometry.pose.pose.position.z));
-        auto r = Eigen::Affine3d(Eigen::Quaterniond(current_odometry.pose.pose.orientation.w,
-            current_odometry.pose.pose.orientation.x, current_odometry.pose.pose.orientation.y,
-            current_odometry.pose.pose.orientation.z));
-
-        auto transform = (t * r).inverse();
-
-        Eigen::Vector3d translation { transform.translation() };
-        Eigen::Quaterniond rotation { transform.linear() };
-
-        stamp.transform.translation.x = translation.x();
-        stamp.transform.translation.y = translation.y();
-        stamp.transform.translation.z = translation.z();
-        stamp.transform.rotation.w    = rotation.w();
-        stamp.transform.rotation.x    = rotation.x();
-        stamp.transform.rotation.y    = rotation.y();
-        stamp.transform.rotation.z    = rotation.z();
-
-        ros_utility.update_transform(stamp);
+            ros_utility.update_transform(stamp);
+        }
 
         // publish the pose only with less data
         auto pose               = geometry_msgs::msg::PoseStamped {};
@@ -422,8 +418,8 @@ struct SLAM::Impl {
     void publish_path() {
         load_current_pose_stamp(current_pose_stamped);
 
+        current_pose_stamped.header.frame_id = string::slam_link;
         current_pose_stamped.header.stamp    = get_ros_time(lidar_end_timestamp);
-        current_pose_stamped.header.frame_id = "lidar_init";
 
         current_path.poses.push_back(current_pose_stamped);
 

@@ -2,6 +2,11 @@
 
 namespace rmcs::string {
 
+constexpr auto world_link = "world_link";
+constexpr auto slam_link  = "lidar_init";
+constexpr auto robot_link = "lidar_link";
+constexpr auto map_link   = "map_link";
+
 namespace slam {
     constexpr auto reset_service_name         = "/rmcs_slam/reset";
     constexpr auto save_map_service_name      = "/rmcs_slam/map_save";
@@ -15,10 +20,12 @@ namespace slam {
     constexpr auto odometry_topic             = "/rmcs_slam/odometry";
     constexpr auto path_topic                 = "/rmcs_slam/path";
 }
+
 namespace location {
     constexpr auto initialize_service_name = "/rmcs_location/initialize";
     constexpr auto pose_topic_name         = "/rmcs_location/pose";
 }
+
 namespace obtacle {
     constexpr auto obstacle_map_topic = "/rmcs_map/map/grid";
 }

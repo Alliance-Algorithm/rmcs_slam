@@ -56,9 +56,7 @@ private:
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
 
     std::shared_ptr<rclcpp::TimerBase> runtime_timer;
-
-    std::string world_link;
-    std::string slam_link;
+    std::shared_ptr<rclcpp::TimerBase> transform_notification_timer;
 
     // 系统运行相关资源
     bool enable_record       = false;
@@ -129,9 +127,6 @@ public:
         registration_radius     = p("registration.initial_map_radius", double {});
         filter_alpha            = p("runtime.filter_alpha", float {});
 
-        world_link = p("link.world", std::string {});
-        slam_link  = p("link.slam", std::string {});
-
         // 需要配准时，读取点云地图
         if (enable_initialize || enable_relocalize) {
             if (pcl::io::loadPCDFile(p("map_path", std::string {}), *standard_map) == -1) {
@@ -189,7 +184,7 @@ public:
                 util::convert_orientation(filtered_orientation, posestamped.pose.orientation);
                 util::convert_translation(filtered_translation, posestamped.pose.position);
 
-                posestamped.header.frame_id = world_link;
+                posestamped.header.frame_id = string::world_link;
                 posestamped.header.stamp    = msg->header.stamp;
                 localization_publisher->publish(posestamped);
 
@@ -270,11 +265,15 @@ public:
             throw util::runtime_error("[rmcs-location][runtime] not all status has mission");
         }
 
-        publish_static_transform(initial_pose, slam_link, world_link);
+        publish_static_transform(initial_pose.inverse(), string::world_link, string::slam_link);
         entry_mission(enable_direct_start ? Status::PREPARATION : Status::NONE_ACTION);
 
         using namespace std::chrono_literals;
         runtime_timer = node.create_wall_timer(100ms, [this] { update(); });
+
+        transform_notification_timer = node.create_wall_timer(1s, [this] {
+            publish_static_transform(initial_pose.inverse(), string::world_link, string::slam_link);
+        });
     }
 
 private:
@@ -323,7 +322,7 @@ private:
         rclcpp_info("result t(%4.2f %4.2f %4.2f ) q(%4.2f %4.2f %4.2f %4.2f)", //
             t.x(), t.y(), t.z(), q.w(), q.x(), q.y(), q.z());
 
-        publish_static_transform(initial_pose.inverse(), slam_link, world_link);
+        publish_static_transform(initial_pose.inverse(), string::slam_link, string::world_link);
 
         is_initialized          = true;
         need_collect_pointcloud = false;
@@ -360,8 +359,6 @@ private:
         stamp.header.frame_id = link;
         stamp.child_frame_id  = child_link;
         static_transform_broadcaster->sendTransform(stamp);
-
-        rclcpp_info("publish static transform from %s to %s", link.c_str(), child_link.c_str());
     }
 
     std::shared_ptr<PointCloud> extract_pointcloud(

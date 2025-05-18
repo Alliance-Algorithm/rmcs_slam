@@ -8,11 +8,6 @@ rmcs_map:
             lidar: "/rmcs_slam/combination"
             # other
             node: "rmcs_map"
-            # 把地图和雷达的变换统一, 此处默认雷达的点云
-            # 已经被纠正到 base link 的正方向距离地面0m处
-            frame:
-                map: "map_link"
-                lidar: "lidar_link"
         # process config
         switch:
             # livox | pointcloud2

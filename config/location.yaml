@@ -16,12 +16,6 @@ rmcs_location:
       # 经过重定位校准的位姿
       robot_pose: "/rmcs_location/pose"
 
-    link:
-      # 里程计的初始点坐标系
-      slam: "lidar_init"
-      # 纠正后的世界系，由给定初始位姿或者地图配准结果决定
-      world: "world"
-
     enable:
       # 初始重定位，在裁判系统自检时进行
       # 要求初始旋转解比较好

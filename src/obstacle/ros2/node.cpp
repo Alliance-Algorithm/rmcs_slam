@@ -4,6 +4,7 @@
 #include "obstacle/ros2/convert.hpp"
 #include "obstacle/ros2/param.hpp"
 #include "util/convert.hpp"
+#include "util/string.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <pcl/common/transforms.h>
@@ -35,7 +36,6 @@ struct Node::Impl {
     Process process;
     Segmentation segmentation;
 
-    std::string map_frame_id;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> segmentation_publisher;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>> obstacle_publisher;
 
@@ -68,7 +68,7 @@ struct Node::Impl {
         if (pointcloud_frame_limit > 2) {
             try {
                 auto transform = transform_buffer->lookupTransform(
-                    "lidar_init", "lidar_link", tf2::TimePointZero);
+                    rmcs::string::slam_link, rmcs::string::robot_link, tf2::TimePointZero);
                 util::convert_orientation(transform.transform.rotation, orientation);
                 util::convert_translation(
                     transform.transform.translation, translation.translation());
@@ -107,7 +107,7 @@ struct Node::Impl {
 
         auto segmentation_part_pointcloud2 = std::make_shared<sensor_msgs::msg::PointCloud2>();
         pcl_to_pc2(*segmentation_part, *segmentation_part_pointcloud2);
-        segmentation_part_pointcloud2->header.frame_id = map_frame_id;
+        segmentation_part_pointcloud2->header.frame_id = string::robot_link;
         segmentation_part_pointcloud2->header.stamp    = header.stamp;
 
         if (publish_cloud) segmentation_publisher->publish(*segmentation_part_pointcloud2);
@@ -117,8 +117,8 @@ struct Node::Impl {
         auto node_map = process.generate_node_map(segmentation_part);
         node_to_grid_map(*node_map, *grid_map);
 
+        grid_map->header.frame_id = string::robot_link;
         grid_map->header.stamp    = header.stamp;
-        grid_map->header.frame_id = map_frame_id;
         grid_map->info.resolution = process.resolution();
         grid_map->info.height     = process.size_num();
         grid_map->info.width      = process.size_num();
@@ -146,12 +146,6 @@ struct Node::Impl {
 
         pointcloud_subscription_callback(pointcloud, msg->header);
     }
-
-    void publish_transform(geometry_msgs::msg::TransformStamped& transform) {
-        transform.header.frame_id = "lidar_link";
-        transform.child_frame_id  = map_frame_id;
-        static_transform_broadcaster->sendTransform(transform);
-    }
 };
 
 Node::Node()
@@ -178,7 +172,6 @@ Node::Node()
             });
     }
 
-    pimpl->map_frame_id           = param::get<std::string>("name.frame.map");
     pimpl->publish_cloud          = param::get<bool>("switch.publish_cloud");
     pimpl->pointcloud_frame_limit = param::get<int>("lidar.livox_frames");
 
@@ -188,11 +181,6 @@ Node::Node()
     pimpl->transform_buffer = std::make_unique<tf2_ros::Buffer>(get_clock());
     pimpl->transform_listener =
         std::make_unique<tf2_ros::TransformListener>(*pimpl->transform_buffer);
-
-    auto transform         = geometry_msgs::msg::TransformStamped {};
-    transform.header.stamp = get_clock()->now();
-    util::convert_orientation(Eigen::Quaterniond::Identity(), transform.transform.rotation);
-    pimpl->publish_transform(transform);
 }
 
 Node::~Node() = default;
