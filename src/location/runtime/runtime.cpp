@@ -265,14 +265,13 @@ public:
             throw util::runtime_error("[rmcs-location][runtime] not all status has mission");
         }
 
-        publish_static_transform(initial_pose.inverse(), string::world_link, string::slam_link);
         entry_mission(enable_direct_start ? Status::PREPARATION : Status::NONE_ACTION);
 
         using namespace std::chrono_literals;
         runtime_timer = node.create_wall_timer(100ms, [this] { update(); });
 
         transform_notification_timer = node.create_wall_timer(1s, [this] {
-            publish_static_transform(initial_pose.inverse(), string::world_link, string::slam_link);
+            publish_static_transform(initial_pose, string::world_link, string::slam_link);
         });
     }
 
@@ -321,8 +320,6 @@ private:
         auto q = Eigen::Quaternionf { initial_pose.rotation() };
         rclcpp_info("result t(%4.2f %4.2f %4.2f ) q(%4.2f %4.2f %4.2f %4.2f)", //
             t.x(), t.y(), t.z(), q.w(), q.x(), q.y(), q.z());
-
-        publish_static_transform(initial_pose.inverse(), string::slam_link, string::world_link);
 
         is_initialized          = true;
         need_collect_pointcloud = false;
