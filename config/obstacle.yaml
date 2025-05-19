@@ -12,9 +12,10 @@ rmcs_map:
             publish_test: false
         lidar:
             topic: "/rmcs_slam/cloud_registered_body"
+            # topic: "/rmcs_slam/scanning"
             # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
             # 以及未纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
-            livox_frames: 10
+            livox_frames: 4
         segmentation:
             # 点云分割中迭代的最大相邻点的距离
             # 这个距离内的点云被视作统一平面内

@@ -209,20 +209,13 @@ public:
         // 用于重启和初始化整个系统的服务，该服务会自动将 SLAM 也重启
         const auto service_name { string::location::initialize_service_name };
         const auto service_callback = TRIGGER_CALLBACK(&, this) {
-            const auto callback = [&](bool success, const std::string& msg) {
-                if ((response->success = success) == true) {
-                    start_collecting_pointcloud();
-                    entry_mission(Status::PREPARATION);
-                    const auto message = "reset initialized status and relocalize now";
-                    response->message  = message;
-                    rclcpp_info(message);
-                } else {
-                    const auto message = "try to reset slam but failed";
-                    response->message  = message;
-                    rclcpp_info(message);
-                }
-            };
-            util::service::rmcs_slam::reset(node, callback);
+            util::service::rmcs_slam::reset(node);
+            start_collecting_pointcloud();
+            entry_mission(Status::PREPARATION);
+
+            response->success = true;
+            response->message = "rmcs-location has handled this request";
+
             rclcpp_info("rmcs-location has handled this request");
         };
         using Service      = std_srvs::srv::Trigger;

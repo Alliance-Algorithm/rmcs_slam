@@ -20,14 +20,14 @@ struct {
 } debug;
 
 auto main_localization(int argc, char** argv) -> int {
-    using Point = pcl::PointXYZ;
+    using Point      = pcl::PointXYZ;
     using PointCloud = pcl::PointCloud<Point>;
 
     rclcpp::init(argc, argv);
     std::signal(SIGINT, [](int) { rclcpp::shutdown(); });
 
     auto node = util::make_simple_node("rmcs_location");
-    auto p = util::quick_paramtetr_reader(*node);
+    auto p    = util::quick_paramtetr_reader(*node);
 
     auto timestamp_first = std::chrono::high_resolution_clock::now();
 
@@ -49,18 +49,18 @@ auto main_localization(int argc, char** argv) -> int {
     engine.register_scan(frame);
 
     auto timestamp_second = std::chrono::high_resolution_clock::now();
-    auto second = std::chrono::duration<double>(timestamp_second - timestamp_first);
+    auto second           = std::chrono::duration<double>(timestamp_second - timestamp_first);
     debug.rclcpp_info("load map and cost %5.2fs", second.count());
 
     auto align = std::make_shared<PointCloud>();
     engine.full_match(align);
 
-    auto transfrom = engine.transformation();
+    auto transfrom   = engine.transformation();
     auto translation = transfrom.translation();
     debug.rclcpp_info("query result: x[%5.2f] y[%5.2f]", translation.x(), translation.y());
 
     auto timestamp_third = std::chrono::high_resolution_clock::now();
-    auto second_third = std::chrono::duration<double>(timestamp_third - timestamp_second);
+    auto second_third    = std::chrono::duration<double>(timestamp_third - timestamp_second);
     debug.rclcpp_info("query and cost %5.2fs", second_third.count());
 
     using namespace std::chrono_literals;
@@ -83,7 +83,6 @@ int main(int argc, char* argv[]) {
 
     struct Node : rclcpp::Node {
         Runtime runtime {};
-
         explicit Node()
             : rclcpp::Node("rmcs_location", util::NodeOptions {}) {
             runtime.initialize(*this);

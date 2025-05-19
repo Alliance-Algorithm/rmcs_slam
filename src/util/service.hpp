@@ -23,52 +23,35 @@ struct service {
     /// @param node reference
     /// @param service name
     /// @param callback void(bool, std::string)
-    using ServiceContext = std::tuple<rclcpp::Node&, std::string, CommonCallback>;
+    using ServiceContext = std::tuple<rclcpp::Node&, std::string>;
 
     static inline void trigger(const ServiceContext& context) {
-        auto& [node, service, callback] = context;
+        auto& [node, service] = context;
 
         auto client  = node.create_client<std_srvs::srv::Trigger>(service);
         auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
         auto future  = client->async_send_request(request);
-
-        if (rclcpp::spin_until_future_complete(node.get_node_base_interface(), future)
-            == rclcpp::FutureReturnCode::SUCCESS) {
-            const auto result = future.get();
-            callback(result->success, result->message);
-        } else {
-            callback(false, "Service " + service + " trigger timeout");
-        }
     };
 
     static inline void set_bool(const ServiceContext& context, bool data) {
-        auto& [node, service, callback] = context;
+        auto& [node, service] = context;
 
         auto client   = node.create_client<std_srvs::srv::SetBool>(service);
         auto request  = std::make_shared<std_srvs::srv::SetBool::Request>();
         request->data = data;
 
         auto future = client->async_send_request(request);
-        if (rclcpp::spin_until_future_complete(node.get_node_base_interface(), future)
-            == rclcpp::FutureReturnCode::SUCCESS) {
-            const auto result = future.get();
-            callback(result->success, result->message);
-        } else {
-            callback(false, "Service " + service + " trigger timeout");
-        }
     }
 
     struct rmcs_slam {
-        // 发送该请求后将阻塞等待结果
-        static inline void reset(rclcpp::Node& node, const CommonCallback& callback) {
-            trigger({ node, string::slam::reset_service_name, callback });
+        static inline void reset(rclcpp::Node& node) {
+            trigger({ node, string::slam::reset_service_name });
         }
-        static inline void save_map(rclcpp::Node& node, const CommonCallback& callback) {
-            trigger({ node, string::slam::save_map_service_name, callback });
+        static inline void save_map(rclcpp::Node& node) {
+            trigger({ node, string::slam::save_map_service_name });
         }
-        static inline void switch_record(
-            rclcpp::Node& node, bool data, const CommonCallback& callback) {
-            set_bool({ node, string::slam::switch_record_service_name, callback }, data);
+        static inline void switch_record(rclcpp::Node& node, bool data) {
+            set_bool({ node, string::slam::switch_record_service_name }, data);
         }
     };
 };

@@ -3,7 +3,7 @@ rmcs_location:
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd
     # 确保地图的位姿是正确的，地板与 xy 平面重合
-    map_path: "/workspaces/RMCS/develop_ws/pcd/alliance-double-lidar.pcd"
+    map_path: "/workspaces/RMCS/develop_ws/pcd/Alliance场地地图.pcd"
     test_path: "/workspaces/RMCS/develop_ws/pcd/scans/1716207380.pcd"
 
     subscription:
@@ -29,7 +29,7 @@ rmcs_location:
 
     registration:
       # 进行配准的点云数量
-      receive_size: 5000
+      receive_size: 3000
       # 初始化位姿提取原始地图点云的半径
       initial_map_radius: 25.0
       # 粗配准的最大迭代次数，包含对旋转解的穷举

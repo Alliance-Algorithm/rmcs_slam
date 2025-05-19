@@ -266,8 +266,8 @@ private:
     std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
     std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
 
-    std::size_t lidar_queue_buffer_size = 2;
-    std::size_t imu_queue_buffer_size   = 2;
+    std::size_t lidar_queue_buffer_size = 4;
+    std::size_t imu_queue_buffer_size   = 4;
 
     // 此方略若使用两个雷达，会造成畸变纠正的劣化
     void register_callback_with_combination(const auto& update_lidar, const auto& update_imu) {

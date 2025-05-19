@@ -23,7 +23,7 @@ rmcs_slam:
 
     # 双雷达带来的同步误差和位姿误差会导致 SLAM 极容易发散，不建议开启
     secondary_lidar:
-      enable: false
+      enable: true
       lidar_topic: "/livox/lidar_192_168_1_174"
       imu_topic: "/livox/imu_192_168_1_174"
       x: -0.06602
