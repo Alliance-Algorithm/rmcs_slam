@@ -10,6 +10,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/crop_box.h>
 #include <rclcpp/logging.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -33,8 +34,8 @@ struct Node::Impl {
     std::vector<pcl::PointCloud<pcl::PointXYZ>> pointcloud_frames;
 
     bool publish_cloud = false;
-    Process process;
     Segmentation segmentation;
+    Process process;
 
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> segmentation_publisher;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>> obstacle_publisher;
@@ -45,9 +46,6 @@ struct Node::Impl {
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
     std::unique_ptr<tf2_ros::Buffer> transform_buffer;
     std::unique_ptr<tf2_ros::TransformListener> transform_listener;
-
-    using Callback = std::function<void(
-        const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>&, const std_msgs::msg::Header&)>;
 
     void pointcloud_subscription_callback(
         const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
@@ -159,7 +157,7 @@ Node::Node()
 
     auto pointcloud_type = param::get<std::string>("switch.pointcloud_type");
 
-    const auto lidar_topic = param::get<std::string>("name.lidar");
+    const auto lidar_topic = param::get<std::string>("lidar.topic");
     if (pointcloud_type == "livox") {
         pimpl->livox_subscription = create_subscription<livox_ros_driver2::msg::CustomMsg>(
             lidar_topic, 10, [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {

@@ -19,6 +19,9 @@ namespace slam {
     constexpr auto pose_topic                 = "/rmcs_slam/pose";
     constexpr auto odometry_topic             = "/rmcs_slam/odometry";
     constexpr auto path_topic                 = "/rmcs_slam/path";
+
+    constexpr auto scanning_conbination_topic     = "/rmcs_slam/scanning";
+    constexpr auto yaw_velocity_combination_topic = "/rmcs_slam/yaw_velocity";
 }
 
 namespace location {

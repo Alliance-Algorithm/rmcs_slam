@@ -390,16 +390,14 @@ struct SLAM::Impl {
             current_odometry.pose.pose.orientation.x,  //
             current_odometry.pose.pose.orientation.y,  //
             current_odometry.pose.pose.orientation.z); //
-        {
-            geometry_msgs::msg::TransformStamped stamp;
-            stamp.header.frame_id = string::slam_link;
-            stamp.child_frame_id  = string::robot_link;
+        geometry_msgs::msg::TransformStamped stamp;
+        stamp.header.frame_id = string::slam_link;
+        stamp.child_frame_id  = string::robot_link;
 
-            util::convert_translation(t, stamp.transform.translation);
-            util::convert_orientation(r, stamp.transform.rotation);
+        util::convert_translation(t, stamp.transform.translation);
+        util::convert_orientation(r, stamp.transform.rotation);
 
-            ros_utility.update_transform(stamp);
-        }
+        ros_utility.update_transform(stamp);
 
         // publish the pose only with less data
         auto pose               = geometry_msgs::msg::PoseStamped {};

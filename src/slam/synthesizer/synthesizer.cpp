@@ -3,6 +3,7 @@
 #include "util/logger.hpp"
 #include "util/parameter.hpp"
 #include "util/pointcloud.hpp"
+#include "util/string.hpp"
 
 #include <boost/process.hpp>
 #include <pcl/point_cloud.h>
@@ -29,7 +30,6 @@ struct LidarContext {
     using PointCloud = Synthesizer::PointCloud;
 
     std::shared_ptr<TransformedPublisher> transformed_publisher;
-
     std::shared_ptr<rclcpp::Subscription<LivoxMsg>> pointcloud_subscription;
     std::shared_ptr<rclcpp::Subscription<ImuMsg>> imu_subscription;
 
@@ -108,8 +108,6 @@ private:
     }
 
     void _internal_update_imu(const std::unique_ptr<ImuMsg>& msg) {
-        if (!is_join_slam) return;
-
         auto angular_velocity = Eigen::Vector3d {
             msg->angular_velocity.x,
             msg->angular_velocity.y,
@@ -135,7 +133,7 @@ private:
         orientation = rotation * orientation;
         util::convert_orientation(orientation, msg->orientation);
 
-        imu_message_callback(msg);
+        if (is_join_slam) imu_message_callback(msg);
     }
 };
 
@@ -158,8 +156,8 @@ public:
         secondary_lidar_topic = p("secondary_lidar.lidar_topic", std::string {});
         secondary_imu_topic   = p("secondary_lidar.imu_topic", std::string {});
 
-        combination_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
-            p("combination_lidar_topic", std::string {}), 1);
+        scanning_combination_publisher = node.create_publisher<sensor_msgs::msg::PointCloud2>(
+            string::slam::scanning_conbination_topic, 1);
 
         const auto initialize_context = [&](LidarContext& context, const std::string& index) {
             const auto enable      = p(index + "_lidar.enable", bool {});
@@ -181,7 +179,7 @@ public:
                     .normalized();
 
             context.initialize(node, lidar_topic, imu_topic, orientation, translation);
-            context.set_transformed_publisher(combination_publisher);
+            context.set_transformed_publisher(scanning_combination_publisher);
             context.set_join_slam(enable);
 
             rclcpp_info("-------------------  %s ---------------------", index.c_str());
@@ -192,7 +190,6 @@ public:
             rclcpp_info("lidar topic: %s", lidar_topic.c_str());
             rclcpp_info("imu   topic: %s", imu_topic.c_str());
         };
-
         initialize_context(primary_context, "primary");
         initialize_context(secondary_context, "secondary");
     }
@@ -254,7 +251,7 @@ private:
     bool enable_primary   = false;
     bool enable_secondary = false;
 
-    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> combination_publisher;
+    std::shared_ptr<LidarContext::TransformedPublisher> scanning_combination_publisher;
 
     std::unique_ptr<boost::process::child> record_process;
     std::string record_path;

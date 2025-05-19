@@ -1,27 +1,20 @@
 rmcs_map:
     ros__parameters:
         name:
-            # publish
             grid: "/rmcs_map/map/grid"
-            cost: "/rmcs_map/map/cost"
-            status: "/rmcs_map/status"
-            lidar: "/rmcs_slam/combination"
-            # other
             node: "rmcs_map"
-        # process config
         switch:
             # livox | pointcloud2
             pointcloud_type: "pointcloud2"
-            cost_map: false
-            grid_map: true
             # 你想要发布点云吗，我可以提供完整点云和
             # 剔除掉地板的点云
             publish_cloud: true
             publish_test: false
         lidar:
+            topic: "/rmcs_slam/cloud_registered_body"
             # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
             # 以及未纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
-            livox_frames: 2
+            livox_frames: 10
         segmentation:
             # 点云分割中迭代的最大相邻点的距离
             # 这个距离内的点云被视作统一平面内

@@ -5,7 +5,6 @@
 
 #include <cmath>
 #include <csignal>
-#include <fstream>
 
 #include <geometry_msgs/msg/vector3.hpp>
 #include <nav_msgs/msg/odometry.hpp>
@@ -23,31 +22,27 @@
 /// configuration
 constexpr auto kImuInitCountThreshold = std::size_t { 10 };
 
-inline bool time_list(PointT& x, PointT& y) { return (x.curvature < y.curvature); };
-
 /// imu process and undistortion
 class ImuProcess {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    using KfState = esekfom::esekf<state_ikfom, 12, input_ikfom>;
 
     ImuProcess();
     ~ImuProcess();
 
     void reset();
     void reset(double start_timestamp, const sensor_msgs::msg::Imu::ConstSharedPtr& lastimu);
-    void set_extrinsic(const V3D& transl, const M3D& rot);
-    void set_extrinsic(const V3D& transl);
-    void set_extrinsic(const MD(4, 4) & T);
-    void set_gyr_cov(const V3D& scaler);
-    void set_acc_cov(const V3D& scaler);
-    void set_gyr_bias_cov(const V3D& b_g);
-    void set_acc_bias_cov(const V3D& b_a);
+    void set_extrinsic(const Eigen::Vector3d& translation, const Eigen::Matrix3d& orientation);
+    void set_gyr_cov(const Eigen::Vector3d& scaler);
+    void set_acc_cov(const Eigen::Vector3d& scaler);
+    void set_gyr_bias_cov(const Eigen::Vector3d& b_g);
+    void set_acc_bias_cov(const Eigen::Vector3d& b_a);
 
-    void process(const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state,
+    void process(const MeasureGroup& meas, KfState& kf_state,
         const std::shared_ptr<PointCloudXYZI>& undistrot_pointcloud);
 
     Eigen::Matrix<double, 12, 12> Q;
-    std::ofstream fout_imu;
     V3D cov_acc;
     V3D cov_gyr;
     V3D cov_acc_scale;
@@ -57,10 +52,9 @@ public:
     double first_lidar_time;
 
 private:
-    void initialize_imu(
-        const MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, int& N);
-    void undistort_pcl(const MeasureGroup& meas,
-        esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state, PointCloudXYZI& pcl_out);
+    void initialize_imu(const MeasureGroup& meas, KfState& kf_state, int& N);
+    void undistort_pcl(
+        const MeasureGroup& meas, KfState& kf_state, PointCloudXYZI& pointcloud_output);
 
     PointCloudXYZI::Ptr cur_pcl_un_;
     sensor_msgs::msg::Imu::ConstSharedPtr last_imu_;
