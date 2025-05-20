@@ -16,21 +16,21 @@
 
 #define USE_IKFOM
 
-#define PI_M             (3.14159265358)
-#define G_m_s2           (9.81) // Gravaty const in GuangDong/China
-#define DIM_STATE        (18)   // Dimension of states (Let Dim(SO(3)) = 3)
-#define DIM_PROC_N       (12)   // Dimension of process noise (Let Dim(SO(3)) = 3)
-#define CUBE_LEN         (6.0)
-#define LIDAR_SP_LEN     (2)
-#define INIT_COV         (1)
+#define PI_M (3.14159265358)
+#define G_m_s2 (9.81)   // Gravaty const in GuangDong/China
+#define DIM_STATE (18)  // Dimension of states (Let Dim(SO(3)) = 3)
+#define DIM_PROC_N (12) // Dimension of process noise (Let Dim(SO(3)) = 3)
+#define CUBE_LEN (6.0)
+#define LIDAR_SP_LEN (2)
+#define INIT_COV (1)
 #define NUM_MATCH_POINTS (5)
-#define MAX_MEAS_DIM     (10000)
+#define MAX_MEAS_DIM (10000)
 
-#define VEC_FROM_ARRAY(v)      v[0], (v)[1], (v)[2]
-#define MAT_FROM_ARRAY(v)      v[0], (v)[1], (v)[2], (v)[3], (v)[4], (v)[5], (v)[6], (v)[7], (v)[8]
+#define VEC_FROM_ARRAY(v) v[0], (v)[1], (v)[2]
+#define MAT_FROM_ARRAY(v) v[0], (v)[1], (v)[2], (v)[3], (v)[4], (v)[5], (v)[6], (v)[7], (v)[8]
 #define CONSTRAIN(v, min, max) (((v) > (min)) ? (((v) < (max)) ? (v) : (max)) : (min))
-#define ARRAY_FROM_EIGEN(mat)  mat.data(), (mat).data() + (mat).rows() * (mat).cols()
-#define STD_VEC_FROM_EIGEN(mat) \
+#define ARRAY_FROM_EIGEN(mat) mat.data(), (mat).data() + (mat).rows() * (mat).cols()
+#define STD_VEC_FROM_EIGEN(mat)                                                                    \
     std::vector<decltype(mat)::Scalar>((mat).data(), (mat).data() + (mat).rows() * (mat).cols())
 
 typedef rmcs_slam::msg::Pose6D Pose6D;
@@ -43,16 +43,16 @@ typedef Eigen::Vector3f V3F;
 typedef Eigen::Matrix3f M3F;
 
 #define MD(a, b) Eigen::Matrix<double, (a), (b)>
-#define VD(a)    Eigen::Matrix<double, (a), 1>
+#define VD(a) Eigen::Matrix<double, (a), 1>
 #define MF(a, b) Eigen::Matrix<float, (a), (b)>
-#define VF(a)    Eigen::Matrix<float, (a), 1>
+#define VF(a) Eigen::Matrix<float, (a), 1>
 
 inline M3D Eye3d(M3D::Identity());
 inline M3F Eye3f(M3F::Identity());
 inline V3D Zero3d(0, 0, 0);
 inline V3F Zero3f(0, 0, 0);
 
-struct MeasureGroup             // Lidar data and imu dates for the curent process
+struct MeasureGroup // Lidar data and imu dates for the curent process
 {
     MeasureGroup() {
         lidar_beg_time = 0.0;
@@ -147,21 +147,14 @@ struct StatesGroup {
     Eigen::Matrix<double, DIM_STATE, DIM_STATE> cov; // states covariance
 };
 
-template <typename T>
-inline T rad2deg(T radians) {
-    return radians * 180.0 / PI_M;
-}
+template <typename T> inline T rad2deg(T radians) { return radians * 180.0 / PI_M; }
+
+template <typename T> inline T deg2rad(T degrees) { return degrees * PI_M / 180.0; }
 
 template <typename T>
-inline T deg2rad(T degrees) {
-    return degrees * PI_M / 180.0;
-}
-
-template <typename T>
-inline auto set_pose6d(
-    const double t, const Eigen::Matrix<T, 3, 1>& a, const Eigen::Matrix<T, 3, 1>& g,
-    const Eigen::Matrix<T, 3, 1>& v, const Eigen::Matrix<T, 3, 1>& p,
-    const Eigen::Matrix<T, 3, 3>& R) {
+inline auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1>& a,
+    const Eigen::Matrix<T, 3, 1>& g, const Eigen::Matrix<T, 3, 1>& v,
+    const Eigen::Matrix<T, 3, 1>& p, const Eigen::Matrix<T, 3, 3>& R) {
     Pose6D rot_kp;
     rot_kp.offset_time = t;
     for (int i = 0; i < 3; i++) {
@@ -183,9 +176,8 @@ where A0_i = [x_i, y_i, z_i], x0 = [A/D, B/D, C/D]^T, b0 = [-1, ..., -1]^T
 normvec:  normalized x0
 */
 template <typename T>
-inline bool esti_normvector(
-    Eigen::Matrix<T, 3, 1>& normvec, const PointVector& point, const T& threshold,
-    const int& point_num) {
+inline bool esti_normvector(Eigen::Matrix<T, 3, 1>& normvec, const PointVector& point,
+    const T& threshold, const int& point_num) {
     Eigen::MatrixXf A(point_num, 3);
     Eigen::MatrixXf b(point_num, 1);
     b.setOnes();
@@ -211,13 +203,13 @@ inline bool esti_normvector(
 
 inline float calc_dist(PointT p1, PointT p2) {
     float d = (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
-            + (p1.z - p2.z) * (p1.z - p2.z);
+        + (p1.z - p2.z) * (p1.z - p2.z);
     return d;
 }
 
 template <typename T>
-inline bool
-    esti_plane(Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& point, const T& threshold) {
+inline bool esti_plane(
+    Eigen::Matrix<T, 4, 1>& pca_result, const PointVector& point, const T& threshold) {
     Eigen::Matrix<T, NUM_MATCH_POINTS, 3> A;
     Eigen::Matrix<T, NUM_MATCH_POINTS, 1> b;
     A.setZero();
@@ -239,9 +231,8 @@ inline bool
     pca_result(3) = 1.0 / n;
 
     for (int j = 0; j < NUM_MATCH_POINTS; j++) {
-        if (fabs(
-                pca_result(0) * point[j].x + pca_result(1) * point[j].y + pca_result(2) * point[j].z
-                + pca_result(3))
+        if (fabs(pca_result(0) * point[j].x + pca_result(1) * point[j].y
+                + pca_result(2) * point[j].z + pca_result(3))
             > threshold) {
             return false;
         }
@@ -257,5 +248,5 @@ inline rclcpp::Time get_ros_time(double timestamp) {
     int32_t sec    = std::floor(timestamp);
     auto nanosec_d = (timestamp - std::floor(timestamp)) * 1e9;
     auto nanosec   = static_cast<uint32_t>(nanosec_d);
-    return {sec, nanosec};
+    return { sec, nanosec };
 }

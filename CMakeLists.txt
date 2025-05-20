@@ -57,6 +57,8 @@ find_package(OpenCV REQUIRED COMPONENTS imgproc)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(PCL REQUIRED COMPONENTS common io segmentation filters)
 
+include_directories(src/third-party/)
+
 # FastGicp 构建
 add_subdirectory(src/third-party/fast_gicp)
 include_directories(src/third-party/fast_gicp/include/)
