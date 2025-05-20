@@ -390,6 +390,7 @@ struct SLAM::Impl {
             current_odometry.pose.pose.orientation.x,  //
             current_odometry.pose.pose.orientation.y,  //
             current_odometry.pose.pose.orientation.z); //
+
         geometry_msgs::msg::TransformStamped stamp;
         stamp.header.frame_id = string::slam_link;
         stamp.child_frame_id  = string::robot_link;

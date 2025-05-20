@@ -10,6 +10,8 @@ rmcs_slam:
       enable: true
       lidar_topic: "/livox/lidar_192_168_100_120"
       imu_topic: "/livox/imu_192_168_100_120"
+      lidar_topic: "/livox/lidar_192_168_100_120"
+      imu_topic: "/livox/imu_192_168_100_120"
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
       x: +0.14
@@ -36,7 +38,7 @@ rmcs_slam:
     # 是否启用录制功能，启动时，触发 /rmcs_slam/switch_record 即可开关录制
     record:
       # NOTE: 时刻注意开关，小心爆硬盘
-      enable: true
+      enable: false
       # 注意给定一个有权限操作的目录，否则将会触发异常退出
       path: "rmcs-record/"
 

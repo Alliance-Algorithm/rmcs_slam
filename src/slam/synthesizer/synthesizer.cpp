@@ -204,10 +204,12 @@ public:
     }
 
     void start_recording() {
-        if (!enable_record) {
+        if (!enable_record && !has_reject_record) {
             rclcpp_info("record is disable, return");
-            return;
+            has_reject_record = true;
         }
+
+        if (!enable_record) return;
 
         if (record_process) stop_recording();
 
@@ -226,10 +228,12 @@ public:
     }
 
     void stop_recording() {
-        if (!enable_record) {
+        if (!enable_record && !has_reject_record) {
             rclcpp_info("record is disable, return");
-            return;
+            has_reject_record = true;
         }
+
+        if (!enable_record) return;
 
         if (!record_process || !record_process->running()) return;
 
@@ -251,6 +255,8 @@ private:
     bool enable_primary   = false;
     bool enable_secondary = false;
 
+    bool has_reject_record = false;
+
     std::shared_ptr<LidarContext::TransformedPublisher> scanning_combination_publisher;
 
     std::unique_ptr<boost::process::child> record_process;
@@ -266,8 +272,8 @@ private:
     std::priority_queue<StampedMsg<LivoxMsg>> lidar_queue;
     std::priority_queue<StampedMsg<ImuMsg>> imu_queue;
 
-    std::size_t lidar_queue_buffer_size = 2;
-    std::size_t imu_queue_buffer_size   = 2;
+    std::size_t lidar_queue_buffer_size = 4;
+    std::size_t imu_queue_buffer_size   = 4;
 
     // 此方略若使用两个雷达，会造成畸变纠正的劣化
     void register_callback_with_combination(const auto& update_lidar, const auto& update_imu) {
