@@ -23,6 +23,8 @@ def generate_launch_description():
         executable="obstacle",
         parameters= [[FindPackageShare("rmcs_slam"), "/config", "/obstacle.yaml"]],
         output="log",
+        respawn=True,
+        respawn_delay=1.0,
     )
     launch.add_action(obstacle)
 
@@ -32,6 +34,8 @@ def generate_launch_description():
         executable="location",
         parameters= [[FindPackageShare("rmcs_slam"), "/config", "/location.yaml"]],
         output="log",
+        respawn=True,
+        respawn_delay=1.0,
     )
     launch.add_action(location)
 
@@ -41,6 +45,8 @@ def generate_launch_description():
         executable="slam",
         parameters= [[FindPackageShare("rmcs_slam"), "/config", "/slam.yaml"]],
         output="log",
+        respawn=True,
+        respawn_delay=1.0,
     )
     launch.add_action(slam)
 

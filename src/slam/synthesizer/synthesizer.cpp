@@ -204,10 +204,12 @@ public:
     }
 
     void start_recording() {
-        if (!enable_record) {
+        if (!enable_record && !has_reject_record) {
             rclcpp_info("record is disable, return");
-            return;
+            has_reject_record = true;
         }
+
+        if (!enable_record) return;
 
         if (record_process) stop_recording();
 
@@ -226,10 +228,12 @@ public:
     }
 
     void stop_recording() {
-        if (!enable_record) {
+        if (!enable_record && !has_reject_record) {
             rclcpp_info("record is disable, return");
-            return;
+            has_reject_record = true;
         }
+
+        if (!enable_record) return;
 
         if (!record_process || !record_process->running()) return;
 
@@ -250,6 +254,8 @@ private:
     bool enable_record    = false;
     bool enable_primary   = false;
     bool enable_secondary = false;
+
+    bool has_reject_record = false;
 
     std::shared_ptr<LidarContext::TransformedPublisher> scanning_combination_publisher;
 
