@@ -40,7 +40,7 @@ rmcs_slam:
       # NOTE: 时刻注意开关，小心爆硬盘
       enable: false
       # 注意给定一个有权限操作的目录，否则将会触发异常退出
-      path: "rmcs-record/"
+      path: "/root/record/"
 
     common:
       # only turn on when external time synchronization is really not possible
