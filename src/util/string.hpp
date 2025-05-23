@@ -26,6 +26,7 @@ namespace slam {
 
 namespace location {
     constexpr auto initialize_service_name = "/rmcs_location/initialize";
+    constexpr auto update_side_service     = "/rmcs_location/update_side";
     constexpr auto pose_topic_name         = "/rmcs_location/pose";
 }
 

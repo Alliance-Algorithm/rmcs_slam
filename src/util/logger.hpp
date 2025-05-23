@@ -1,6 +1,9 @@
 #pragma once
 
+#include <Eigen/Geometry>
+#include <fmt/format.h>
 #include <rclcpp/logging.hpp>
+#include <rclcpp/node.hpp>
 #include <utility>
 
 // 转发参数到这个日志会让 clangd 报一个 warning
@@ -8,7 +11,7 @@
 #pragma clang diagnostic ignored "-Wformat-security"
 
 #define RMCS_INITIALIZE_LOGGER(NAME)                                                               \
-    rclcpp::Logger _internal_logger { rclcpp::get_logger(NAME) };                                  \
+    rclcpp::Logger _internal_logger { rclcpp::get_logger(std::string(NAME)) };                     \
                                                                                                    \
     inline void rclcpp_info(auto&&... args) const {                                                \
         RCLCPP_INFO(_internal_logger, std::forward<decltype(args)>(args)...);                      \
@@ -32,6 +35,20 @@
     };
 
 namespace rmcs::util {
+
+template <auto name_getter> struct Log {
+    static inline rclcpp::Logger log { rclcpp::get_logger(name_getter()) };
+    static inline void info(auto&&... args) { RCLCPP_INFO(log, args...); }
+    static inline void warn(auto&&... args) { RCLCPP_WARN(log, args...); }
+    static inline void error(auto&&... args) { RCLCPP_ERROR(log, args...); }
+};
+
+inline std::string to_string(const Eigen::Isometry3f& transform) {
+    auto t = Eigen::Vector3f { transform.translation() };
+    auto q = Eigen::Quaternionf { transform.rotation() };
+    return fmt::format("t( {:.2} {:.2} {:.2} ), q( {:.2} {:.2} {:.2} {:.2} )", t.x(), t.y(), t.z(),
+        q.w(), q.x(), q.y(), q.z());
+}
 
 namespace ansi {
 
@@ -84,18 +101,18 @@ namespace ansi {
     constexpr auto kStyleHidden    = "\033[8m";
 
     // 光标控制
-    constexpr auto kCursorUp      = "\033[A"; // 上移一行
-    constexpr auto kCursorDown    = "\033[B"; // 下移一行
-    constexpr auto kCursorRight   = "\033[C"; // 右移一行
-    constexpr auto kCursorLeft    = "\033[D"; // 左移一行
-    constexpr auto kCursorSave    = "\033[s"; // 保存光标位置
-    constexpr auto kCursorRestore = "\033[u"; // 恢复光标位置
+    constexpr auto kCursorUp      = "\033[A";    // 上移一行
+    constexpr auto kCursorDown    = "\033[B";    // 下移一行
+    constexpr auto kCursorRight   = "\033[C";    // 右移一行
+    constexpr auto kCursorLeft    = "\033[D";    // 左移一行
+    constexpr auto kCursorSave    = "\033[s";    // 保存光标位置
+    constexpr auto kCursorRestore = "\033[u";    // 恢复光标位置
     constexpr auto kCursorHide    = "\033[?25l"; // 隐藏光标
     constexpr auto kCursorShow    = "\033[?25h"; // 显示光标
 
     // 清除控制
     constexpr auto kClearScreen = "\033[2J"; // 清屏
-    constexpr auto kClearLine   = "\033[K"; // 清除从光标到行尾的内容
+    constexpr auto kClearLine   = "\033[K";  // 清除从光标到行尾的内容
 
 } // namespace ansi
 

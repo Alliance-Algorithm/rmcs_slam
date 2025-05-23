@@ -3,7 +3,7 @@ project(rmcs_slam)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_BUILD_TYPE "Release")
 
 # OpenMp 配置
@@ -53,6 +53,7 @@ endif()
 
 # 第三方依赖
 find_package(Eigen3 REQUIRED)
+find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS imgproc)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(PCL REQUIRED COMPONENTS common io segmentation filters)
@@ -88,6 +89,7 @@ target_link_libraries(
     pcl_common
     pcl_segmentation
     pcl_filters
+    fmt::fmt
     rclcpp::rclcpp
     ${std_srvs_TARGETS}
 )

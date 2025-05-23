@@ -3,7 +3,7 @@ rmcs_location:
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd
     # 确保地图的位姿是正确的，地板与 xy 平面重合
-    map_path: "/rmcs_install/Alliance场地地图.pcd"
+    map_path: "/workspaces/RMCS/develop_ws/pcd/视觉组空地起始外走廊歪.pcd"
     test_path: "/workspaces/RMCS/develop_ws/pcd/scans/1716207380.pcd"
 
     subscription:
@@ -25,7 +25,7 @@ rmcs_location:
       relocalization_automaic: true
       # 若关闭此选项，系统在 /rmcs_location/initialize 被触发后才运行
       # 开启时，每次启动直接运行进程，初始重定位
-      direct_start: true
+      direct_start: false
 
     registration:
       # 进行配准的点云数量
@@ -57,7 +57,9 @@ rmcs_location:
         # 判断离群点的倍数判据，大于以下倍数标准差的点即为离群
         stddev_mul_thresh: 0.5
 
-    initial_pose:
+    # 默认的初始位姿，一般是纠正后的地图的原点，在基地前一块空间，
+    # 和哨兵装甲板贴合，此时哨兵的位置即为原点
+    default_pose:
       translation:
         x: 0.0
         y: 0.0
@@ -67,6 +69,17 @@ rmcs_location:
         x: 0.0
         y: 0.0
         z: 0.0
+    # 地图原点的对面方的相同位置，注意绕Z轴旋转180度
+    opposite_pose:
+      translation:
+        x: 21.0
+        y: 0.0
+        z: 0.0
+      orientation:
+        w: 0.0
+        x: 0.0
+        y: 0.0
+        z: 1.0
 
     runtime:
       # 对输出位姿的一阶低通滤波

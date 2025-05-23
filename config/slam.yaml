@@ -38,9 +38,9 @@ rmcs_slam:
     # 是否启用录制功能，启动时，触发 /rmcs_slam/switch_record 即可开关录制
     record:
       # NOTE: 时刻注意开关，小心爆硬盘
-      enable: false
+      enable: true
       # 注意给定一个有权限操作的目录，否则将会触发异常退出
-      path: "/root/record/"
+      path: "/root/双创场地测试用录制/"
 
     common:
       # only turn on when external time synchronization is really not possible
