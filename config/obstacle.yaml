@@ -28,7 +28,7 @@ rmcs_map:
             # 栅格地图边长，单位 m
             map_width: 10.1
             # 雷达的盲区，球形直径
-            lidar_blind: 0.8
+            lidar_blind: 0.9
             # 有效点数量阈值，出现在网格的点大于该数才视作有效
             points_limit: 5
             # 有效点高度区间阈值，障碍物高度区间大于此值才视作有效
@@ -42,6 +42,6 @@ rmcs_map:
             pre_dilate_times: 1
             # 闭合，拟补激光雷达点云的缺口
             pre_close_size: 3
-            pre_close_times: 1
+            pre_close_times: 0
             # 最后膨胀提升容错率
             dilate_size: 0

@@ -3,7 +3,7 @@ rmcs_location:
     # 重定位所用的地图，地图原点需要为哨兵导航的原点
     # 格式为 pcd
     # 确保地图的位姿是正确的，地板与 xy 平面重合
-    map_path: "/path/to/your/pcd"
+    map_path: "/root/常州基地.pcd"
     test_path: "/path/to/your/pcd"
 
     subscription:
@@ -25,7 +25,7 @@ rmcs_location:
       relocalization_automaic: true
       # 若关闭此选项，系统在 /rmcs_location/initialize 被触发后才运行
       # 开启时，每次启动直接运行进程，初始重定位
-      direct_start: false
+      direct_start: true
 
     registration:
       # 进行配准的点云数量
@@ -85,7 +85,7 @@ rmcs_location:
 
     runtime:
       # 对输出位姿的一阶低通滤波
-      filter_alpha: 0.5
+      filter_alpha: 1.0
       minimum_x: -05.0
       minimum_y: -08.0
       minimum_z: -00.5
