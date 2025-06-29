@@ -11,11 +11,11 @@ namespace rmcs::util {
 
 class Imu {
 public:
-    using Data   = sensor_msgs::msg::Imu;
-    using SO3d   = Sophus::SO3d;
-    using Result = std::pair<Data, SO3d>;
+    using ImuData = sensor_msgs::msg::Imu;
+    using SO3d    = Sophus::SO3d;
+    using Result  = std::pair<ImuData, SO3d>;
 
-    void update(const Data& data) {
+    void update(const ImuData& data) {
         if (results_.empty()) initialize(data);
 
         const auto [last_imu_data, last_rotation] = results_.back();
@@ -43,9 +43,9 @@ public:
         results_.emplace_back(data, final_rotation);
     }
 
-    void reset(double start_timestamp, const Data& last_imu_data) {
-        start_timestamp_.emplace(start_timestamp);
-        last_imu_data_.emplace(last_imu_data);
+    void reset(double start_timestamp, const std::optional<ImuData>& last_imu_data) {
+        start_timestamp_ = start_timestamp;
+        last_imu_data_   = last_imu_data;
         results_.clear();
     }
 
@@ -56,12 +56,12 @@ public:
 
 private:
     std::optional<double> start_timestamp_ = std::nullopt;
-    std::optional<Data> last_imu_data_     = std::nullopt;
+    std::optional<ImuData> last_imu_data_  = std::nullopt;
 
     std::vector<Result> results_;
 
     // 基于上一帧进行插值，权重为相隔的时间，相隔时间越短，权重越大
-    void initialize(const Data& data) {
+    void initialize(const ImuData& data) {
         if (!start_timestamp_.has_value() || !last_imu_data_.has_value())
             throw util::runtime_error("Wrong status of imu initialization");
 
@@ -89,7 +89,7 @@ private:
         };
 
         auto final_rotation = SO3d {};
-        auto final_imu_data = Data {};
+        auto final_imu_data = ImuData {};
 
         final_imu_data.header.stamp          = util::get_ros_time(*start_timestamp_);
         final_imu_data.angular_velocity.x    = interpolation(last_gyr.x, current_gyr.x);

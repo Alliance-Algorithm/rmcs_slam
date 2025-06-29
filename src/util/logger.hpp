@@ -49,6 +49,9 @@ inline std::string to_string(const Eigen::Isometry3f& transform) {
     return fmt::format("t( {:.2} {:.2} {:.2} ), q( {:.2} {:.2} {:.2} {:.2} )", t.x(), t.y(), t.z(),
         q.w(), q.x(), q.y(), q.z());
 }
+inline std::string to_string(const Eigen::Quaternionf& q) {
+    return fmt::format("q( {:.2} {:.2} {:.2} {:.2} )", q.w(), q.x(), q.y(), q.z());
+}
 
 namespace ansi {
 
