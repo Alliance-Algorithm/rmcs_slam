@@ -14,11 +14,11 @@ struct Orthotics::Impl {
 
     Sophus::SE3d transform {};
 
-    std::shared_ptr<PointCloud> pointcloud_source { nullptr };
-    std::shared_ptr<PointCloud> pointcloud_output { nullptr };
+    std::shared_ptr<PointCloud> pointcloud_source;
+    std::shared_ptr<PointCloud> pointcloud_output;
 
-    std::unique_ptr<LidarData> data_last_lidar { nullptr };
-    std::unique_ptr<ImuData> data_last_imu { nullptr };
+    std::unique_ptr<LidarData> data_last_lidar;
+    std::unique_ptr<ImuData> data_last_imu;
 
     auto reset() -> void {
         log.info("Orthotics is requested to reset");
@@ -26,11 +26,60 @@ struct Orthotics::Impl {
         imu.reset(-1, std::nullopt);
 
         receive_first_data = true;
-        data_last_lidar    = nullptr;
-        data_last_imu      = nullptr;
+        data_last_lidar    = std::make_unique<LidarData>();
+        data_last_imu      = std::make_unique<ImuData>();
 
         pointcloud_source = std::make_shared<PointCloud>();
         pointcloud_output = std::make_shared<PointCloud>();
+    }
+
+    auto process(const Package& package) -> void {
+        if (package.imu_data.empty() || !package.pointcloud)
+            throw util::runtime_error("Package is not correct");
+
+        if constexpr (kEnableLog) {
+            const auto timestamp_lidar = util::get_time_sec(package.pointcloud->header.stamp);
+            const auto timestamp_front = util::get_time_sec(package.imu_data.front()->header.stamp);
+            const auto timestamp_back  = util::get_time_sec(package.imu_data.back()->header.stamp);
+            const auto data_size       = package.imu_data.size();
+            const auto output_format   = "Process: lidar[%.4f] imu[%lu][%.4f %.4f]";
+            log.info(output_format, timestamp_lidar, data_size, timestamp_front, timestamp_back);
+        }
+
+        if (receive_first_data) {
+            receive_first_data = false;
+
+            reset();
+            *data_last_lidar = *package.pointcloud;
+            *data_last_imu   = *package.imu_data.back();
+
+            return;
+        }
+
+        integrate(package.imu_data);
+        const auto rotation  = imu.rotation();
+        const auto transform = Sophus::SE3d { rotation, Eigen::Vector3d::Zero() };
+    }
+
+private:
+    auto integrate(const std::vector<std::unique_ptr<ImuData>>& data) -> void {
+
+        const auto second = util::get_time_sec(data_last_lidar->header.stamp);
+        imu.reset(second, *data_last_imu);
+
+        for (const auto& imu_frame : data)
+            imu.update(*imu_frame);
+
+        if constexpr (kEnableLog) {
+            const auto to_degree = [](double angle) { return angle * 180. / std::numbers::pi; };
+
+            const auto x = to_degree(imu.rotation().angleX());
+            const auto y = to_degree(imu.rotation().angleY());
+            const auto z = to_degree(imu.rotation().angleZ());
+
+            const auto format = "Integrate rotation angle [x, y, z]: [%.2f, %.2f, %.2f]";
+            log.info(format, x, y, z);
+        }
     }
 
     // TODO: 这个诡异的测试用的点云记得去掉
@@ -64,27 +113,6 @@ struct Orthotics::Impl {
             point.x = static_cast<float>(point_undistort.x());
             point.y = static_cast<float>(point_undistort.y());
             point.z = static_cast<float>(point_undistort.z());
-        }
-    }
-
-private:
-    auto integrate(const std::vector<std::unique_ptr<ImuData>>& data) -> void {
-
-        const auto second = util::get_time_sec(data_last_lidar->header.stamp);
-        imu.reset(second, *data_last_imu);
-
-        for (const auto& imu_frame : data)
-            imu.update(*imu_frame);
-
-        if constexpr (kEnableLog) {
-            const auto to_degree = [](double angle) { return angle * 180. / std::numbers::pi; };
-
-            const auto x = to_degree(imu.rotation().angleX());
-            const auto y = to_degree(imu.rotation().angleY());
-            const auto z = to_degree(imu.rotation().angleZ());
-
-            const auto format = "Integrate rotation angle [x, y, z]: [%.2f, %.2f, %.2f]";
-            log.info(format, x, y, z);
         }
     }
 };
