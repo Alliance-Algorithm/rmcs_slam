@@ -54,7 +54,8 @@ static inline void make_gradient_map(cv::Mat& origin) {
     cv::addWeighted(mat_gradient_x, 0.5, mat_gradient_y, 0.5, 0, origin);
 }
 
-void filter_map(ObstacleMap& node_map) {
+constexpr auto kObstacleNodeValue = 100;
+auto filter_map(ObstacleMap& node_map) -> void {
     static const auto pre_dilate_size  = param::get<int>("filter.pre_dilate_size");
     static const auto pre_dilate_times = param::get<int>("filter.pre_dilate_times");
     static const auto pre_close_size   = param::get<int>("filter.pre_close_size");
@@ -65,7 +66,7 @@ void filter_map(ObstacleMap& node_map) {
     auto mat   = cv::Mat(width, width, CV_8UC1);
 
     node_map.foreach ([&mat](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
-        mat.at<int8_t>(int(x), int(y)) = node.value;
+        mat.at<int8_t>(int(x), int(y)) = (node.value > 0) ? 0 : std::numeric_limits<int8_t>::max();
     });
 
     auto element = cv::Mat();
@@ -91,7 +92,8 @@ void filter_map(ObstacleMap& node_map) {
     }
 
     node_map.foreach ([&mat](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
-        if (auto value = mat.at<int8_t>(int(x), int(y)); true) node.value = value;
+        const auto value = mat.at<int8_t>(int(x), int(y));
+        if (value == 0) node.value = kObstacleNodeValue;
     });
 }
 

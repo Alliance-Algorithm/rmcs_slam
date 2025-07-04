@@ -1,5 +1,4 @@
 #include "synthesizer.hpp"
-#include "dedistortion.hpp"
 #include "util/convert.hpp"
 #include "util/logger.hpp"
 #include "util/parameter.hpp"
@@ -29,8 +28,6 @@ struct LidarContext {
     using LivoxMsg   = Synthesizer::LivoxMsg;
     using ImuMsg     = Synthesizer::ImuMsg;
     using PointCloud = Synthesizer::PointCloud;
-
-    Dedistortion dedistortion;
 
     std::shared_ptr<TransformedPublisher> transformed_publisher;
     std::shared_ptr<rclcpp::Subscription<LivoxMsg>> pointcloud_subscription;

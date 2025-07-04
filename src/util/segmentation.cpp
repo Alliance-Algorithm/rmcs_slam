@@ -7,6 +7,8 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
+constexpr auto kSegmentSizeLimit = std::size_t { 1'000 };
+
 struct Segmentation::Impl {
     std::shared_ptr<PointCloud> source;
 
@@ -75,6 +77,10 @@ std::shared_ptr<Segmentation::PointCloud> Segmentation::execute() {
     pass_through.filter(*pointcloud_removed_xyz);
     pass_through.filter(indices_removed_xyz->indices);
 
+    // 点过少的话，也就没有必要继续了
+    if (pointcloud_removed_xyz->size() < kSegmentSizeLimit) return pointcloud_removed_xyz;
+
+    // 进行平面检测
     auto coefficients = std::make_shared<pcl::ModelCoefficients>();
     auto plane_points = std::make_shared<pcl::PointIndices>();
     pimpl->segmentation.setInputCloud(pointcloud_removed_xyz);

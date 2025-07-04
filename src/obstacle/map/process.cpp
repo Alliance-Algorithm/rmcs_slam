@@ -18,7 +18,6 @@
 #include <cmath>
 #include <cstddef>
 #include <memory>
-#include <type_traits>
 
 using namespace rmcs;
 
@@ -54,9 +53,10 @@ struct Process::Impl {
     }
 };
 
-std::unique_ptr<ObstacleMap> Process::generate_node_map(
-    const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud) {
-    using Point     = std::remove_cvref<decltype((*pointcloud)[0])>::type;
+using PointCloud = pcl::PointCloud<pcl::PointXYZ>;
+auto Process::generate_node_map(const std::shared_ptr<PointCloud>& pointcloud)
+    -> std::unique_ptr<ObstacleMap> {
+
     auto resolution = pimpl->resolution;
     auto map_width  = pimpl->map_width;
     auto side_num   = pimpl->side_num;
@@ -64,17 +64,18 @@ std::unique_ptr<ObstacleMap> Process::generate_node_map(
     // 加载可视域内节点的高度信息
     // 使用过的节点，用于二次更新时减少循环次数
     auto visited_node = std::unordered_set<std::pair<std::size_t, std::size_t>> {};
+
     // 障碍地图
-    auto obstacle_map = ObstacleMap { side_num };
+    auto obstacle_map = std::make_unique<ObstacleMap>(side_num);
     for (const auto point : *pointcloud) {
-        const auto f = [&](float v) -> std::size_t {
+        const auto f = [=](float v) -> std::size_t {
             return std::clamp(static_cast<std::size_t>((v + (map_width / 2.)) / resolution),
                 std::size_t { 0 }, side_num - 1);
         };
         const auto x = f(point.x), y = f(point.y);
 
         const auto expand = static_cast<std::size_t>(pimpl->influence_radius / pimpl->resolution);
-        obstacle_map.update_round_area(
+        obstacle_map->update_round_area(
             x, y, expand, [&](std::size_t x, std::size_t y, ObstacleMap::Node& node) {
                 visited_node.insert(std::make_pair(x, y));
                 node.update_height_table(point.z);
@@ -82,22 +83,22 @@ std::unique_ptr<ObstacleMap> Process::generate_node_map(
     }
     // 二次更新，加载障碍物信息
     for (const auto [x, y] : visited_node) {
-        auto& node = obstacle_map(x, y);
+        auto& node = obstacle_map->at(x, y);
         if (node.height_table_size() < pimpl->points_limit) continue;
         if (node.maximum_height_range() < pimpl->height_limit) continue;
-        obstacle_map.update_node(x, y, 100);
+        obstacle_map->update_node(x, y, 100);
     }
 
     // 去除盲区
     auto blind_radius = pimpl->lidar_blind / 2;
     auto grid_radius  = static_cast<std::size_t>(blind_radius / pimpl->resolution);
-    obstacle_map.fill_center(grid_radius, -1);
+    obstacle_map->fill_center(grid_radius, -1);
 
     // 三次更新，作可行域射线投射
-    filter_map(obstacle_map);
-    obstacle_map.ray_cast_with_infinty_unknown();
+    obstacle_map->ray_cast_with_infinty_unknown();
+    filter_map(*obstacle_map);
 
-    return std::make_unique<ObstacleMap>(std::move(obstacle_map));
+    return obstacle_map;
 }
 
 Process::Process()

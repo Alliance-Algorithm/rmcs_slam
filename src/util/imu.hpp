@@ -71,8 +71,9 @@ private:
         const auto current_seconds         = util::get_time_sec(data.header.stamp);
         const auto current_time_difference = current_seconds - *start_timestamp_;
 
+        // TODO: Fix this exception
         if (last_time_difference < 0 || current_time_difference < 0)
-            throw util::runtime_error("Wrond timestamp of imu initialization");
+            throw util::runtime_error("Wrong timestamp of imu initialization");
 
         const auto sum_time_difference = last_time_difference + current_time_difference + 1e-9;
 

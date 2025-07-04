@@ -160,27 +160,9 @@ target_link_libraries(
     pcl_filters
 )
 
-
-# Calibration 进程
-file(GLOB_RECURSE CALIBRATION_SRC CONFIGURE_DEPENDS src/calibration/*.cpp)
-add_executable(
-    calibration
-    ${CALIBRATION_SRC}
-)
-ament_target_dependencies(
-    calibration
-    ${dependencies}
-)
-target_link_libraries(
-    calibration
-    util
-    fast_gicp
-    pcl_common
-)
-
 # ROS2 安装配置
 install(
-  TARGETS slam obstacle location calibration
+  TARGETS slam obstacle location
   DESTINATION lib/${PROJECT_NAME}
 )
 install(

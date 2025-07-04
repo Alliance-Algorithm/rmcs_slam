@@ -1,9 +1,8 @@
 #include "obstacle/ros2/node.hpp"
 #include "obstacle/map/process.hpp"
-#include "obstacle/map/segmentation.hpp"
-#include "obstacle/ros2/convert.hpp"
-#include "obstacle/ros2/param.hpp"
-#include "util/convert.hpp"
+#include "ros2/convert.hpp"
+#include "ros2/factory.hpp"
+#include "util/parameter.hpp"
 #include "util/string.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -17,98 +16,167 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <deque>
 #include <memory>
 #include <string>
 
 using namespace rmcs;
 
-struct Node::Impl {
-    RMCS_INITIALIZE_LOGGER("rmcs-map");
+constexpr auto kLogName = [] { return "rmcs-map"; };
+
+struct RmcsMapRuntime::Impl {
+    util::Log<kLogName> log;
 
     using Point      = pcl::PointXYZ;
     using PointCloud = pcl::PointCloud<Point>;
 
-    // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
-    int pointcloud_frame_limit = 1;
-    int pointcloud_frame_index = 0;
-    std::vector<pcl::PointCloud<pcl::PointXYZ>> pointcloud_frames;
-
-    bool publish_cloud = false;
-    Segmentation segmentation;
     Process process;
+    std::vector<std::unique_ptr<Factory>> factories;
+
+    bool switch_publish = false;
+    double lidar_blind  = 0;
+    double map_width    = 0;
+    double map_height   = 0;
+
+    // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
+    int frame_limit = 1;
+    std::deque<std::shared_ptr<PointCloud>> frames;
 
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> segmentation_publisher;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>> obstacle_publisher;
 
-    std::shared_ptr<rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>> livox_subscription;
-    std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> pointcloud_subscription;
-
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_transform_broadcaster;
-    std::unique_ptr<tf2_ros::Buffer> transform_buffer;
-    std::unique_ptr<tf2_ros::TransformListener> transform_listener;
 
-    void pointcloud_subscription_callback(
-        const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
-        const std_msgs::msg::Header& header) {
+    explicit Impl(rclcpp::Node& node) {
+        const auto p = util::quick_paramtetr_reader(node);
+
+        obstacle_publisher =
+            node.create_publisher<nav_msgs::msg::OccupancyGrid>(p("name.grid", std::string {}), 10);
+        segmentation_publisher =
+            node.create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_map/segmentation_part", 10);
+
+        switch_publish = p("switch.publish_cloud", bool {});
+        frame_limit    = p("lidar.livox_frames", int {});
+        lidar_blind    = p("grid.lidar_blind", double {});
+        map_width      = p("grid.map_width", double {});
+        map_height     = p("grid.map_height", double {});
+
+        static_transform_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(&node);
+
+        p("switch.undistort", bool {}) ? setup_undistortion_mode(node) : setup_normal_node(node);
+    }
+
+    auto setup_normal_node(rclcpp::Node& node) -> void {
+        const auto p = util::quick_paramtetr_reader(node);
+        log.info(util::title_text("Rmcs obstacle setup as normal mode").c_str());
+
+        const auto callback = [this](const auto& p0, const auto& p1) {
+            pointcloud_preprocess(p0, p1);
+        };
+        const auto topics = p("lidar.lid_topics", std::vector<std::string> {});
+        for (auto index = 0; index < topics.size(); index++) {
+            factories.emplace_back(std::make_unique<Factory>(node))
+                ->set_lid_topic_name(topics.at(index))
+                .set_lid_assembly_transform(get_lidar_transform(node, index))
+                .build_normal_mode(callback);
+        }
+        log.info("Factory size: %ld", factories.size());
+    }
+    auto setup_undistortion_mode(rclcpp::Node& node) -> void {
+        const auto p = util::quick_paramtetr_reader(node);
+        log.info(util::title_text("Rmcs obstacle setup as undistortion mode").c_str());
+
+        const auto imu_extrinsic_translation =
+            p("lidar.imu_extrinsic_translation", std::vector<double> {});
+        const auto imu_extrinsic_orientation =
+            p("lidar.imu_extrinsic_orientation", std::vector<double> {});
+
+        if (imu_extrinsic_translation.size() != 3 || imu_extrinsic_orientation.size() != 4)
+            throw util::runtime_error("Wrong imu extrinsic transform format");
+
+        const auto imu_extrinsic_transform = Eigen::Isometry3d { //
+            Eigen::Translation3d {
+                imu_extrinsic_translation[0],
+                imu_extrinsic_translation[1],
+                imu_extrinsic_translation[2],
+            } * 
+            Eigen::Quaterniond {
+                imu_extrinsic_orientation[0],
+                imu_extrinsic_orientation[1],
+                imu_extrinsic_orientation[2],
+                imu_extrinsic_orientation[3],
+            }
+        };
+
+        const auto callback = [this](const auto& p0, const auto& p1) {
+            pointcloud_preprocess(p0, p1);
+        };
+        const auto lid_topics = p("lidar.lid_topics", std::vector<std::string> {});
+        const auto imu_topics = p("lidar.imu_topics", std::vector<std::string> {});
+        for (auto index = 0; index < lid_topics.size(); index++) {
+            factories.emplace_back(std::make_unique<Factory>(node))
+                ->set_lid_topic_name(lid_topics[index])
+                .set_imu_topic_name(imu_topics[index])
+                .set_imu_extrinsic_transform(imu_extrinsic_transform)
+                .set_lid_assembly_transform(get_lidar_transform(node, index))
+                .build_unditort_mode(callback);
+        }
+    }
+
+    auto pointcloud_preprocess(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
+        const std_msgs::msg::Header& header) -> void {
+
+        const auto timestamp_begin = std::chrono::high_resolution_clock::now();
+
+        auto crop_box = pcl::CropBox<Point> {};
 
         // 去除盲区点云
-        auto crop_box = pcl::CropBox<Point> {};
-        auto blind    = param::get<float>("grid.lidar_blind");
-        crop_box.setMin(Eigen::Vector4f { -blind / 2, -blind / 2, -1'000, 1 });
-        crop_box.setMax(Eigen::Vector4f { +blind / 2, +blind / 2, +1'000, 1 });
+        const auto blind = static_cast<float>(lidar_blind) / 2;
+        crop_box.setMin(Eigen::Vector4f { -blind, -blind, -1'000, 1 });
+        crop_box.setMax(Eigen::Vector4f { +blind, +blind, +1'000, 1 });
         crop_box.setInputCloud(pointcloud);
         crop_box.setNegative(true);
         crop_box.filter(*pointcloud);
 
-        // 补偿多帧叠加的位移偏差
-        auto orientation = Eigen::Quaternionf::Identity();
-        auto translation = Eigen::Translation3f::Identity();
-        if (pointcloud_frame_limit > 2) {
-            try {
-                auto transform = transform_buffer->lookupTransform(
-                    rmcs::string::slam_link, rmcs::string::robot_link, tf2::TimePointZero);
-                util::convert_orientation(transform.transform.rotation, orientation);
-                util::convert_translation(
-                    transform.transform.translation, translation.translation());
-            } catch (const tf2::TransformException& e) {
-                orientation = Eigen::Quaternionf::Identity();
-                translation = Eigen::Translation3f::Identity();
-                rclcpp_warn("%s", e.what());
-            }
-        }
-        auto& pointcloud_frame = pointcloud_frames.at(pointcloud_frame_index);
-        pointcloud_frame.clear();
-        pcl::transformPointCloud(
-            *pointcloud, pointcloud_frame, Eigen::Affine3f { translation * orientation });
+        // 约束点云范围
+        const auto width  = static_cast<float>(map_width) / 2;
+        const auto height = static_cast<float>(map_height);
+        crop_box.setMin(Eigen::Vector4f { -width, -width, -1'000, 1 });
+        crop_box.setMax(Eigen::Vector4f { +width, +width, +height, 1 });
+        crop_box.setInputCloud(pointcloud);
+        crop_box.setNegative(false);
+        crop_box.filter(*pointcloud);
+
+        // 约束点云积累数量
+        frames.push_back(pointcloud);
+        while (frames.size() > frame_limit)
+            frames.pop_front();
 
         auto pointcloud_mixed = std::make_shared<PointCloud>();
-        for (const auto& frame : pointcloud_frames)
-            *pointcloud_mixed += frame;
+        for (const auto& frame : frames)
+            *pointcloud_mixed += *frame;
 
-        // 将点云变换回云台系
-        auto pointcloud_mixed_yaw_link = std::make_shared<PointCloud>();
-        pcl::transformPointCloud(*pointcloud_mixed, *pointcloud_mixed_yaw_link,
-            Eigen::Affine3f { translation * orientation }.inverse());
+        pointcloud_process(pointcloud_mixed, header);
 
-        pointcloud_process(pointcloud_mixed_yaw_link, header);
-
-        if (++pointcloud_frame_index >= pointcloud_frame_limit) pointcloud_frame_index = 0;
+        const auto timestamp_finish = std::chrono::high_resolution_clock::now();
+        const auto seconds = std::chrono::duration<double>(timestamp_finish - timestamp_begin);
+        // log.info("Porcess cost seconds: %10.5fs", seconds.count());
     }
 
-    void pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
-        const std_msgs::msg::Header& header) {
+    auto pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,
+        const std_msgs::msg::Header& header) -> void {
 
-        if (pointcloud->size() < 10) return;
-
-        segmentation.set_input_source(pointcloud);
-        auto segmentation_part = segmentation.execute();
+        /// @note 使用高程表来制作障碍地图后，地面分割没啥必要了
+        // segmentation.set_input_source(pointcloud);
+        // auto segmentation_part = segmentation.execute();
+        const auto& segmentation_part = pointcloud;
 
         auto segmentation_part_pointcloud2 = std::make_shared<sensor_msgs::msg::PointCloud2>();
         pcl_to_pc2(*segmentation_part, *segmentation_part_pointcloud2);
         segmentation_part_pointcloud2->header.frame_id = string::robot_link;
         segmentation_part_pointcloud2->header.stamp    = header.stamp;
 
-        if (publish_cloud) segmentation_publisher->publish(*segmentation_part_pointcloud2);
+        if (switch_publish) segmentation_publisher->publish(*segmentation_part_pointcloud2);
 
         // generate grid map
         auto grid_map = std::make_shared<nav_msgs::msg::OccupancyGrid>();
@@ -127,58 +195,34 @@ struct Node::Impl {
         obstacle_publisher->publish(*grid_map);
     }
 
-    void livox_subscription_callback(
-        const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
+    auto get_lidar_transform(rclcpp::Node& node, std::size_t index) const -> Eigen::Isometry3d {
+        const auto p = util::quick_paramtetr_reader(node);
 
-        auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-        livox_to_pcl(msg->points, *pointcloud);
+        const auto radian = [](double degrees) { return degrees / 180. * std::numbers::pi; };
+        const auto t_raw  = p("lidar.lidar_translations", std::vector<double>());
+        const auto q_raw  = p("lidar.lidar_orientations", std::vector<double>());
 
-        pointcloud_subscription_callback(pointcloud, msg->header);
-    }
+        const auto t = Eigen::Translation3d {
+            t_raw[index * 3 + 0],
+            t_raw[index * 3 + 1],
+            t_raw[index * 3 + 2],
+        };
+        const auto q = Eigen::Quaterniond { Eigen::Quaterniond::Identity() /* 对齐用的 */
+            * Eigen::AngleAxisd(radian(q_raw[index * 3 + 0]), Eigen::Vector3d::UnitZ())
+            * Eigen::AngleAxisd(radian(q_raw[index * 3 + 1]), Eigen::Vector3d::UnitY())
+            * Eigen::AngleAxisd(radian(q_raw[index * 3 + 2]), Eigen::Vector3d::UnitX()) }
+                           .normalized();
 
-    void pointcloud2_subscription_callback(
-        const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
+        log.info("index: %d, t: %+5.2fm %+5.2fm %+5.2fm, q: %+5.2f° %+5.2f° %+5.2f°", index,
+            t_raw[index * 3 + 0], t_raw[index * 3 + 1], t_raw[index * 3 + 2], q_raw[index * 3 + 0],
+            q_raw[index * 3 + 1], q_raw[index * 3 + 2]);
 
-        auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
-        pc2_to_pcl(*msg, *pointcloud);
-
-        pointcloud_subscription_callback(pointcloud, msg->header);
+        return Eigen::Isometry3d { t * q };
     }
 };
 
-Node::Node()
-    : rclcpp::Node(param::get<std::string>("name.node"))
-    , pimpl(std::make_unique<Impl>()) {
+RmcsMapRuntime::RmcsMapRuntime()
+    : rclcpp::Node { "rmcs_map", util::NodeOptions {} }
+    , pimpl { std::make_unique<Impl>(*this) } { }
 
-    pimpl->obstacle_publisher =
-        create_publisher<nav_msgs::msg::OccupancyGrid>(param::get<std::string>("name.grid"), 10);
-    pimpl->segmentation_publisher =
-        create_publisher<sensor_msgs::msg::PointCloud2>("/rmcs_map/segmentation_part", 10);
-
-    auto pointcloud_type = param::get<std::string>("switch.pointcloud_type");
-
-    const auto lidar_topic = param::get<std::string>("lidar.topic");
-    if (pointcloud_type == "livox") {
-        pimpl->livox_subscription = create_subscription<livox_ros_driver2::msg::CustomMsg>(
-            lidar_topic, 10, [this](const std::unique_ptr<livox_ros_driver2::msg::CustomMsg>& msg) {
-                pimpl->livox_subscription_callback(msg);
-            });
-    } else if (pointcloud_type == "pointcloud2") {
-        pimpl->pointcloud_subscription = create_subscription<sensor_msgs::msg::PointCloud2>(
-            lidar_topic, 10, [this](const std::unique_ptr<sensor_msgs::msg::PointCloud2>& msg) {
-                pimpl->pointcloud2_subscription_callback(msg);
-            });
-    }
-
-    pimpl->publish_cloud          = param::get<bool>("switch.publish_cloud");
-    pimpl->pointcloud_frame_limit = param::get<int>("lidar.livox_frames");
-
-    pimpl->pointcloud_frames.resize(pimpl->pointcloud_frame_limit);
-    pimpl->static_transform_broadcaster =
-        std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
-    pimpl->transform_buffer = std::make_unique<tf2_ros::Buffer>(get_clock());
-    pimpl->transform_listener =
-        std::make_unique<tf2_ros::TransformListener>(*pimpl->transform_buffer);
-}
-
-Node::~Node() = default;
+RmcsMapRuntime::~RmcsMapRuntime() = default;
