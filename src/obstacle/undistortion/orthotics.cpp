@@ -1,6 +1,8 @@
 #include "orthotics.hpp"
 #include "sophus/se3.hpp"
 #include "util/imu.hpp"
+#include "util/logger.hpp"
+
 #include <pcl_conversions/pcl_conversions.h>
 
 constexpr auto kNameGetter = [] { return "orthotics"; };
@@ -15,8 +17,8 @@ struct ImuOrthotics::Impl {
     Sophus::SE3d transform_lidar_imu { Eigen::Quaterniond::Identity(), Eigen::Vector3d::Zero() };
     bool receive_first_data { true };
 
-    std::unique_ptr<LidData> data_last_lidar;
-    std::unique_ptr<ImuData> data_last_imu;
+    std::unique_ptr<LidData> data_last_lidar = std::make_unique<LidData>();
+    std::unique_ptr<ImuData> data_last_imu   = std::make_unique<ImuData>();
 
     auto reset() -> void {
         log.info("Orthotics is requested to reset");
@@ -31,8 +33,12 @@ struct ImuOrthotics::Impl {
 
     template <concept_point Point>
     auto process(std::shared_ptr<pcl::PointCloud<Point>>& output, const Package& package) -> void {
-        if (package.imu_data.empty() || !package.lid_data)
-            throw util::runtime_error("Package is not correct");
+
+        if (package.imu_data.empty()) //
+            throw util::runtime_error("The imu data of package is empty");
+
+        if (!package.lid_data)
+            throw util::runtime_error("The lidar data of package is null pointer");
 
         if constexpr (kEnableLog) {
             const auto timestamp_lidar = util::get_time_sec(package.lid_data->timestamp);
@@ -43,6 +49,7 @@ struct ImuOrthotics::Impl {
             log.info(output_format, timestamp_lidar, data_size, timestamp_front, timestamp_back);
         }
 
+        log.info("Imu data size: %ld", package.imu_data.size());
         if (receive_first_data) {
             reset();
             *data_last_lidar   = *package.lid_data;
@@ -68,8 +75,11 @@ struct ImuOrthotics::Impl {
 private:
     auto integrate(const std::vector<std::unique_ptr<ImuData>>& data) -> void {
 
-        const auto second = rclcpp::Time { data_last_lidar->timestamp }.seconds();
-        imu.reset(second, *data_last_imu);
+        if (data_last_lidar == nullptr) {
+            throw util::runtime_error("Last lidar data is null");
+        }
+
+        imu.reset(data_last_lidar->timestamp.seconds(), *data_last_imu);
 
         for (const auto& imu_frame : data)
             imu.update(*imu_frame);
@@ -112,11 +122,11 @@ private:
                 * Eigen::Vector3d { point_current - translation_point_end };
 
             const auto point_result = lid_transform * point_undistort;
+            output->points[index].x = point_result.x();
+            output->points[index].y = point_result.y();
+            output->points[index].z = point_result.z();
 
-            auto& output_point = output->points[index++];
-            output_point.x     = static_cast<float>(point_result.x());
-            output_point.y     = static_cast<float>(point_result.y());
-            output_point.z     = static_cast<float>(point_result.z());
+            index++;
         }
         output->width    = output->size();
         output->height   = 1;

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "util/logger.hpp"
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <unordered_set>
@@ -67,10 +66,7 @@ public:
         }
     }
 
-    void update_node(std::size_t x, std::size_t y, int8_t v) {
-        assert(ax < width() && ay < width());
-        internal_nodes[x][y].value = v;
-    }
+    void update_node(std::size_t x, std::size_t y, int8_t v) { internal_nodes[x][y].value = v; }
 
     void update_round_area(std::size_t x, std::size_t y, std::size_t expand,
         const std::function<void(std::size_t, std::size_t, Node&)>& apply) {

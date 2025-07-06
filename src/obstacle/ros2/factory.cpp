@@ -52,13 +52,13 @@ struct Factory::Impl {
         undistortion_core.set_imu_transform(imu_extrinsic_transform);
 
         lid_subscription = node_reference.create_subscription<LidMsg>(
-            lid_topic, 10, [this](const std::unique_ptr<LidMsg>& msg) {
+            lid_topic, 10, [this](std::unique_ptr<LidMsg> msg) {
                 newest_message_header = msg->header;
-                undistortion_core.handle_lid_message(msg);
+                undistortion_core.handle_lid_message(std::move(msg));
             });
         imu_subscription = node_reference.create_subscription<ImuMsg>(
-            imu_topic, 10, [this](const std::unique_ptr<ImuMsg>& msg) {
-                undistortion_core.handle_imu_message(msg);
+            imu_topic, 10, [this](std::unique_ptr<ImuMsg> msg) {
+                undistortion_core.handle_imu_message(std::move(msg));
             });
 
         using namespace std::chrono_literals;

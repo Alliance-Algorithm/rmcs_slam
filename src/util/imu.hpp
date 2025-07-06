@@ -1,6 +1,5 @@
 #pragma once
 
-#include "util/logger.hpp"
 #include "util/time.hpp"
 
 #include <optional>
@@ -16,7 +15,8 @@ public:
     using Result  = std::pair<ImuData, SO3d>;
 
     void update(const ImuData& data) {
-        if (results_.empty()) initialize(data);
+        if (!is_initialized_.load(std::memory_order::relaxed) || results_.empty())
+            is_initialized_.store(initialize(data), std::memory_order::relaxed);
 
         const auto [last_imu_data, last_rotation] = results_.back();
 
@@ -51,19 +51,20 @@ public:
 
     SO3d rotation() const {
         if (results_.empty()) return SO3d {};
-        return std::get<1>(results_.back());
+        const auto& [msg, rotation] = results_.back();
+        return rotation;
     }
 
 private:
     std::optional<double> start_timestamp_ = std::nullopt;
     std::optional<ImuData> last_imu_data_  = std::nullopt;
-
     std::vector<Result> results_;
+    std::atomic<bool> is_initialized_;
 
     // 基于上一帧进行插值，权重为相隔的时间，相隔时间越短，权重越大
-    void initialize(const ImuData& data) {
-        if (!start_timestamp_.has_value() || !last_imu_data_.has_value())
-            throw util::runtime_error("Wrong status of imu initialization");
+    auto initialize(const ImuData& data) -> bool {
+
+        if (!start_timestamp_.has_value() || !last_imu_data_.has_value()) return false;
 
         const auto last_seconds         = util::get_time_sec(last_imu_data_->header.stamp);
         const auto last_time_difference = *start_timestamp_ - last_seconds;
@@ -71,9 +72,7 @@ private:
         const auto current_seconds         = util::get_time_sec(data.header.stamp);
         const auto current_time_difference = current_seconds - *start_timestamp_;
 
-        // TODO: Fix this exception
-        if (last_time_difference < 0 || current_time_difference < 0)
-            throw util::runtime_error("Wrong timestamp of imu initialization");
+        if (last_time_difference < 0 || current_time_difference < 0) return false;
 
         const auto sum_time_difference = last_time_difference + current_time_difference + 1e-9;
 
@@ -101,6 +100,7 @@ private:
         final_imu_data.linear_acceleration.z = interpolation(last_acc.z, current_acc.z);
 
         results_.emplace_back(final_imu_data, final_rotation);
+        return true;
     }
 };
 
