@@ -5,41 +5,40 @@
 
 using namespace rmcs;
 
-constexpr auto kLogName         = [] { return "undistortion"; };
+using Logger = util::Log<[] { return "undistortion"; }>;
+
 constexpr auto kLidLoopBackMsg  = "Timestamp of lid regression occurs";
 constexpr auto kImuLoopBackMsg  = "Timestamp of imu regression occurs";
 constexpr auto kProcessBeginMsg = "Handle process of dedistortion starts";
 constexpr auto kStopRequestMsg  = "Undistortion process is requested to stop";
 constexpr auto kResetRequestMsg = "Undistortion process is requested to reset";
 
-constexpr auto kLidBufferCapacity = std::size_t { 5 };
-constexpr auto kImuBufferCapacity = kLidBufferCapacity * 20;
+using lid_capacity = boost::lockfree::capacity<05>;
+using imu_capacity = boost::lockfree::capacity<20>;
 
 struct Undistortion::Impl {
     using Point      = pcl::PointXYZ;
     using PointCloud = pcl::PointCloud<Point>;
 
-    util::Log<kLogName> log;
+    using LivoxMsg = livox_ros_driver2::msg::CustomMsg;
+    using ImuMsg   = sensor_msgs::msg::Imu;
+
+    Logger log;
     ImuOrthotics orthotics;
 
-    boost::lockfree::spsc_queue<livox_ros_driver2::msg::CustomMsg*,
-        boost::lockfree::capacity<kLidBufferCapacity>>
-        livox_lid_buffer;
+    boost::lockfree::spsc_queue<LivoxMsg*, lid_capacity> livox_lid_buffer;
     std::atomic<rcl_time_point_value_t> last_lid_timestamp;
 
-    boost::lockfree::spsc_queue<sensor_msgs::msg::Imu*,
-        boost::lockfree::capacity<kImuBufferCapacity>>
-        livox_imu_buffer;
+    boost::lockfree::spsc_queue<ImuMsg*, imu_capacity> livox_imu_buffer;
     std::atomic<rcl_time_point_value_t> last_imu_timestamp;
 
-    boost::lockfree::spsc_queue<PointCloud*, boost::lockfree::capacity<kLidBufferCapacity>>
+    boost::lockfree::spsc_queue<std::shared_ptr<PointCloud>, lid_capacity>
         undistort_pointcloud_buffer;
 
     std::jthread process_thread;
 
     std::atomic<bool> request_reset { false };
 
-    std::mutex buffer_mutex;
     std::condition_variable bind_action_notifiction;
 
     explicit Impl() noexcept {
@@ -48,34 +47,23 @@ struct Undistortion::Impl {
 
             auto process_rate = rclcpp::Rate { 1000 };
             while (rclcpp::ok()) {
-                auto package = Package {};
-                {
-                    auto unique_lock = std::unique_lock { buffer_mutex };
-                    bind_action_notifiction.wait(unique_lock, [&package, this] -> bool {
-                        if (auto result = try_bind_package()) {
-                            package = std::move(result.value());
-                            return !process_thread.get_stop_token().stop_requested();
-                        }
-                        return false;
-                    });
-                }
-
                 if (stop_token.stop_requested()) {
-                    log.info(kStopRequestMsg);
+                    log.info("Undistortion process is requested to stop");
                     break;
                 }
 
                 if (request_reset.load(std::memory_order::relaxed)) {
                     request_reset.store(false, std::memory_order::relaxed);
-
-                    log.info(kResetRequestMsg);
+                    log.info("Undistortion process is requested to reset");
                     orthotics.reset();
-
                     continue;
                 }
 
+                auto package = try_bind_package();
+                if (!package.has_value()) continue;
+
                 auto output = std::make_shared<ImuOrthotics::CloudXYZ>();
-                orthotics.process(output, package);
+                orthotics.process(output, package.value());
 
                 while (!undistort_pointcloud_buffer.push(output))
                     std::this_thread::yield();
@@ -107,29 +95,24 @@ struct Undistortion::Impl {
             log.warn("Timestamp of lidar loop back");
         }
         last_lid_timestamp = timestamp.nanoseconds();
-        while (!livox_lid_buffer.push(msg.release())) {
-            std::this_thread::yield();
-        }
 
-        // auto interval   = msg->points.back().offset_time;
-        // auto pointcloud = LidData { {}, timestamp };
-        // pointcloud.reserve(msg->points.size());
-        // for (const auto& livox_point : msg->points) {
-        //     auto point = Point {
-        //         {
-        //             livox_point.x,
-        //             livox_point.y,
-        //             livox_point.z,
-        //         },
-        //         static_cast<double>(livox_point.offset_time) / interval,
-        //     };
-        //     pointcloud.points.push_back(point);
-        // }
+        const auto release = msg.release();
+        while (!livox_lid_buffer.push(release))
+            std::this_thread::yield();
 
         bind_action_notifiction.notify_all();
     }
     auto handle_imu_message(std::unique_ptr<ImuData> msg) -> void {
         const auto timestamp = rclcpp::Time { msg->header.stamp };
+        if (timestamp.nanoseconds() < last_imu_timestamp) {
+            while (livox_imu_buffer.pop()) { }
+            log.warn("Timestamp of imu loop back");
+        }
+        last_imu_timestamp = timestamp.nanoseconds();
+
+        const auto release = msg.release();
+        while (!livox_imu_buffer.push(release))
+            std::this_thread::yield();
 
         bind_action_notifiction.notify_all();
     }
@@ -186,12 +169,12 @@ auto Undistortion::set_lid_transform(const Eigen::Isometry3d& t) -> void {
     pimpl->orthotics.set_lid_transform(t);
 }
 
-auto Undistortion::handle_lid_message(const std::unique_ptr<LivoMsg>& msg) -> void {
-    pimpl->handle_lid_message(msg);
+auto Undistortion::handle_lid_message(std::unique_ptr<LivoMsg> msg) -> void {
+    pimpl->handle_lid_message(std::move(msg));
 }
 
-auto Undistortion::handle_imu_message(const std::unique_ptr<ImuData>& msg) -> void {
-    pimpl->handle_imu_message(msg);
+auto Undistortion::handle_imu_message(std::unique_ptr<ImuData> msg) -> void {
+    pimpl->handle_imu_message(std::move(msg));
 }
 
 auto Undistortion::stop_process() -> void { pimpl->stop_process(); }
