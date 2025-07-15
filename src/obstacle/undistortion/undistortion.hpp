@@ -10,17 +10,14 @@ class Undistortion final {
 
 public:
     /// 有时候，为了对齐，你不得不简写一些单词
-    using LivoMsg = livox_ros_driver2::msg::CustomMsg;
-    using ImuData = ImuOrthotics::ImuData;
-    using LidData = ImuOrthotics::LidData;
-    using Point   = ImuOrthotics::Point;
-    using Package = ImuOrthotics::Package;
+    using LivMsg = livox_ros_driver2::msg::CustomMsg;
+    using ImuMsg = ImuOrthotics::ImuMsg;
 
     auto set_imu_transform(const Eigen::Isometry3d&) -> void;
     auto set_lid_transform(const Eigen::Isometry3d&) -> void;
 
-    auto handle_lid_message(std::unique_ptr<LivoMsg>) -> void;
-    auto handle_imu_message(std::unique_ptr<ImuData>) -> void;
+    auto handle_lid_message(std::unique_ptr<LivMsg>) -> void;
+    auto handle_imu_message(std::unique_ptr<ImuMsg>) -> void;
 
     auto stop_process() -> void;
     auto try_query_undistort_cloud() -> std::shared_ptr<ImuOrthotics::CloudXYZ>;

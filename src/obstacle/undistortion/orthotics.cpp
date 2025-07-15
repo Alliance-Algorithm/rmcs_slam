@@ -15,71 +15,59 @@ struct ImuOrthotics::Impl {
 
     Eigen::Isometry3d transform_lidar_robot { Eigen::Isometry3d::Identity() };
     Sophus::SE3d transform_lidar_imu { Eigen::Quaterniond::Identity(), Eigen::Vector3d::Zero() };
-    bool receive_first_data { true };
+    bool receive_first { true };
 
-    std::unique_ptr<LidData> data_last_lidar = std::make_unique<LidData>();
-    std::unique_ptr<ImuData> data_last_imu   = std::make_unique<ImuData>();
+    std::unique_ptr<LivMsg> last_lid;
+    std::unique_ptr<ImuMsg> last_imu;
 
     auto reset() -> void {
         log.info("Orthotics is requested to reset");
 
         imu.reset(-1, std::nullopt);
 
-        data_last_lidar = std::make_unique<LidData>();
-        data_last_imu   = std::make_unique<ImuData>();
+        last_lid = std::make_unique<LivMsg>();
+        last_imu = std::make_unique<ImuMsg>();
 
-        receive_first_data = true;
+        receive_first = true;
     }
 
     template <concept_point Point>
-    auto process(std::shared_ptr<pcl::PointCloud<Point>>& output, const Package& package) -> void {
+    auto process(std::shared_ptr<pcl::PointCloud<Point>>& output, const MessageGroup& package)
+        -> void {
 
-        if (package.imu_data.empty()) //
-            throw util::runtime_error("The imu data of package is empty");
+        if (package.imu_msg.empty() || package.lid_msg == nullptr)
+            throw util::runtime_error("The message group is invalid");
 
-        if (!package.lid_data)
-            throw util::runtime_error("The lidar data of package is null pointer");
-
-        if constexpr (kEnableLog) {
-            const auto timestamp_lidar = util::get_time_sec(package.lid_data->timestamp);
-            const auto timestamp_front = util::get_time_sec(package.imu_data.front()->header.stamp);
-            const auto timestamp_back  = util::get_time_sec(package.imu_data.back()->header.stamp);
-            const auto data_size       = package.imu_data.size();
-            const auto output_format   = "Process: lidar[%.4f] imu[%lu][%.4f %.4f]";
-            log.info(output_format, timestamp_lidar, data_size, timestamp_front, timestamp_back);
-        }
-
-        log.info("Imu data size: %ld", package.imu_data.size());
-        if (receive_first_data) {
+        if (receive_first) {
             reset();
-            *data_last_lidar   = *package.lid_data;
-            *data_last_imu     = *package.imu_data.back();
-            receive_first_data = false;
+            *last_lid     = *package.lid_msg;
+            *last_imu     = *package.imu_msg.back();
+            receive_first = false;
             return;
         }
 
-        integrate(package.imu_data);
+        integrate(package.imu_msg);
 
         const auto transform = Sophus::SE3d { imu.rotation(), Eigen::Vector3d::Zero() };
         const auto transform_total =
             transform_lidar_imu.inverse() * transform * transform_lidar_imu;
-        const auto interval_total = util::get_time_sec(package.lid_data->timestamp)
-            - util::get_time_sec(data_last_lidar->timestamp);
+        const auto interval_total = util::get_time_sec(package.lid_msg->header.stamp)
+            - util::get_time_sec(last_lid->header.stamp);
 
-        undistort(output, package.lid_data, interval_total, transform_total, transform_lidar_robot);
+        undistort(output, package.lid_msg, interval_total, transform_total, transform_lidar_robot);
 
-        *data_last_lidar = *package.lid_data;
-        *data_last_imu   = *package.imu_data.back();
+        *last_lid = *package.lid_msg;
+        *last_imu = *package.imu_msg.back();
     }
 
 private:
-    auto integrate(const std::vector<std::unique_ptr<ImuData>>& data) -> void {
+    auto integrate(const std::vector<std::unique_ptr<ImuMsg>>& data) -> void {
 
-        if (data_last_lidar == nullptr) {
+        if (last_lid == nullptr) {
             throw util::runtime_error("Last lidar data is null");
         }
 
-        imu.reset(data_last_lidar->timestamp.seconds(), *data_last_imu);
+        imu.reset(rclcpp::Time { last_lid->header.stamp }.seconds(), *last_imu);
 
         for (const auto& imu_frame : data)
             imu.update(*imu_frame);
@@ -99,16 +87,16 @@ private:
     /// @note 事实上，源代码这里风格极其糟糕，这是不得不吐槽的事实
     template <concept_point Point>
     static inline auto undistort(std::shared_ptr<pcl::PointCloud<Point>>& output,
-        const std::unique_ptr<LidData>& source, double interval_total,
+        const std::unique_ptr<LivMsg>& source, double interval_total,
         const Sophus::SE3d& imu_transform, const Eigen::Isometry3d& lid_transform) -> void {
 
         const auto& translation = Eigen::Vector3d { imu_transform.translation() };
         const auto& rotate_vec  = Eigen::Vector3d { imu_transform.so3().log() };
 
         output->clear();
-        output->resize(source->size());
+        output->resize(source->point_num);
         auto index = std::size_t { 0 };
-        for (const auto& point : *source) {
+        for (const auto& point : source->points) {
             const auto ratio_begin_point = point.interval_ratio;
             const auto ratio_point_end   = 1. - ratio_begin_point;
 
@@ -139,10 +127,11 @@ ImuOrthotics::ImuOrthotics()
 
 ImuOrthotics::~ImuOrthotics() = default;
 
-auto ImuOrthotics::process(std::shared_ptr<CloudXYZ>& output, const Package& package) -> void {
+auto ImuOrthotics::process(std::shared_ptr<CloudXYZ>& output, const MessageGroup& package) -> void {
     pimpl->process(output, package);
 }
-auto ImuOrthotics::process(std::shared_ptr<CloudXYZI>& output, const Package& package) -> void {
+auto ImuOrthotics::process(std::shared_ptr<CloudXYZI>& output, const MessageGroup& package)
+    -> void {
     pimpl->process(output, package);
 }
 

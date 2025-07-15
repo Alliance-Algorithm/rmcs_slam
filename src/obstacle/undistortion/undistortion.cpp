@@ -41,9 +41,9 @@ struct Undistortion::Impl {
 
     std::condition_variable bind_action_notifiction;
 
-    explicit Impl() noexcept {
-        process_thread = std::jthread { [this](const std::stop_token& stop_token) {
-            log.info(kProcessBeginMsg);
+    explicit Impl() noexcept
+        : process_thread { [this](const std::stop_token& stop_token) {
+            log.info("Handle process of dedistortion starts");
 
             auto process_rate = rclcpp::Rate { 1000 };
             while (rclcpp::ok()) {
@@ -51,7 +51,6 @@ struct Undistortion::Impl {
                     log.info("Undistortion process is requested to stop");
                     break;
                 }
-
                 if (request_reset.load(std::memory_order::relaxed)) {
                     request_reset.store(false, std::memory_order::relaxed);
                     log.info("Undistortion process is requested to reset");
@@ -59,19 +58,18 @@ struct Undistortion::Impl {
                     continue;
                 }
 
-                auto package = try_bind_package();
-                if (!package.has_value()) continue;
+                if (const auto optional_package = try_bind_package()) {
+                    const auto& package = optional_package.value();
 
-                auto output = std::make_shared<ImuOrthotics::CloudXYZ>();
-                orthotics.process(output, package.value());
+                    auto output = std::make_shared<PointCloud>();
+                    orthotics.process(output, package);
 
-                while (!undistort_pointcloud_buffer.push(output))
-                    std::this_thread::yield();
+                    undistort_pointcloud_buffer.push(output);
+                }
 
                 process_rate.sleep();
             }
-        } };
-    }
+        } } { }
 
     ~Impl() noexcept {
         process_thread.request_stop();
@@ -88,7 +86,9 @@ struct Undistortion::Impl {
         else return nullptr;
     }
 
-    auto handle_lid_message(std::unique_ptr<LivoMsg> msg) -> void {
+    auto handle_lid_message(std::unique_ptr<LivMsg> msg) -> void {
+        log.info("Handle lid message");
+
         const auto timestamp = rclcpp::Time { msg->header.stamp };
         if (timestamp.nanoseconds() < last_lid_timestamp) {
             while (livox_lid_buffer.pop()) { };
@@ -97,12 +97,9 @@ struct Undistortion::Impl {
         last_lid_timestamp = timestamp.nanoseconds();
 
         const auto release = msg.release();
-        while (!livox_lid_buffer.push(release))
-            std::this_thread::yield();
-
-        bind_action_notifiction.notify_all();
+        livox_lid_buffer.push(release);
     }
-    auto handle_imu_message(std::unique_ptr<ImuData> msg) -> void {
+    auto handle_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
         const auto timestamp = rclcpp::Time { msg->header.stamp };
         if (timestamp.nanoseconds() < last_imu_timestamp) {
             while (livox_imu_buffer.pop()) { }
@@ -111,48 +108,47 @@ struct Undistortion::Impl {
         last_imu_timestamp = timestamp.nanoseconds();
 
         const auto release = msg.release();
-        while (!livox_imu_buffer.push(release))
-            std::this_thread::yield();
-
-        bind_action_notifiction.notify_all();
+        livox_imu_buffer.push(release);
     }
 
 private:
-    auto try_bind_package() -> std::optional<Package> {
-        if (lid_buffer.empty() || imu_buffer.empty()) return std::nullopt;
+    auto try_bind_package() -> std::optional<ImuOrthotics::MessageGroup> {
 
-        const auto lid_timestamp_newest = rclcpp::Time { lid_buffer.back().timestamp };
-        const auto imu_timestamp_oldest = rclcpp::Time { imu_buffer.front().header.stamp };
+        if (livox_lid_buffer.empty()) return std::nullopt;
+        if (livox_imu_buffer.empty()) return std::nullopt;
+
+        const auto imu_timestamp_oldest = rclcpp::Time { livox_imu_buffer.front()->header.stamp };
         // 有 IMU 数据游离于最新雷达数据前无法被打包，去除
-        if (lid_timestamp_newest.nanoseconds() < imu_timestamp_oldest.nanoseconds()) {
+        if (last_lid_timestamp < imu_timestamp_oldest.nanoseconds()) {
             log.warn("有 IMU 数据游离于最新雷达数据前无法被打包，去除");
-            return lid_buffer.clear(), std::nullopt;
+            while (livox_lid_buffer.pop()) { }
+            return std::nullopt;
         }
 
-        const auto lid_timestamp_oldest = rclcpp::Time { lid_buffer.front().timestamp };
-        const auto imu_timestamp_newest = rclcpp::Time { imu_buffer.back().header.stamp };
+        const auto lid_timestamp_oldest = rclcpp::Time { livox_lid_buffer.front()->header.stamp };
         // 还未出现新于最旧雷达数据的 IMU 数据，继续等待
-        if (lid_timestamp_oldest.nanoseconds() > imu_timestamp_newest.nanoseconds()) {
+        if (lid_timestamp_oldest.nanoseconds() > last_imu_timestamp) {
             log.warn("还未出现新于最旧雷达数据的 IMU 数据，继续等待");
             return std::nullopt;
         }
 
-        log.info("Data to bind, imu: %ld", imu_buffer.size());
-        auto result = Package {};
+        auto result = ImuOrthotics::MessageGroup {};
 
-        result.lid_data = std::make_unique<LidData>(lid_buffer.front());
-        lid_buffer.pop_front();
+        result.lid_msg = std::unique_ptr<LivMsg>(livox_lid_buffer.front());
+        livox_lid_buffer.pop();
 
-        const auto lid_timestamp = result.lid_data->timestamp;
-        std::erase_if(imu_buffer, [&](const ImuData& data) {
-            const auto imu_timestamp = rclcpp::Time { data.header.stamp };
-            if (imu_timestamp.nanoseconds() <= lid_timestamp.nanoseconds()) {
-                result.imu_data.push_back(std::make_unique<ImuData>(data));
-                return true;
-            } else return false;
-        });
+        const auto lid_timestamp = rclcpp::Time { result.lid_msg->header.stamp };
+        while (!livox_imu_buffer.empty()) {
+            const auto imu_msg       = livox_imu_buffer.front();
+            const auto imu_timestamp = rclcpp::Time { imu_msg->header.stamp };
 
-        return result.imu_data.empty() ? std::nullopt : std::optional { std::move(result) };
+            if (imu_timestamp.nanoseconds() < lid_timestamp.nanoseconds()) {
+                result.imu_msg.emplace_back(std::unique_ptr<ImuMsg>(imu_msg));
+                livox_imu_buffer.pop();
+            } else break;
+        }
+
+        return result;
     }
 };
 
@@ -169,11 +165,11 @@ auto Undistortion::set_lid_transform(const Eigen::Isometry3d& t) -> void {
     pimpl->orthotics.set_lid_transform(t);
 }
 
-auto Undistortion::handle_lid_message(std::unique_ptr<LivoMsg> msg) -> void {
+auto Undistortion::handle_lid_message(std::unique_ptr<LivMsg> msg) -> void {
     pimpl->handle_lid_message(std::move(msg));
 }
 
-auto Undistortion::handle_imu_message(std::unique_ptr<ImuData> msg) -> void {
+auto Undistortion::handle_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
     pimpl->handle_imu_message(std::move(msg));
 }
 
