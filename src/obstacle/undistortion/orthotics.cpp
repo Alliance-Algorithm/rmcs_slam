@@ -82,20 +82,22 @@ private:
         const auto& translation = Eigen::Vector3d { imu_transform.translation() };
         const auto& rotate_vec  = Eigen::Vector3d { imu_transform.so3().log() };
 
-        const auto timestamp_end   = static_cast<double>(source->points.back().offset_time);
-        const auto interval_points = timestamp_end * 1e-9;
+        const auto timestamp_end = static_cast<double>(source->points.back().offset_time);
 
         // std::array<double, 20> ratios_point_end;
+        // std::array<Eigen::Vector3d, 20> points_origin;
+        // std::array<Eigen::Vector3d, 20> points_undistort;
 
         output->clear();
         output->resize(source->point_num);
+
         auto index = std::size_t { 0 };
         for (const auto& point : source->points) {
-            const auto ratio_begin_point = (point.offset_time / timestamp_end * interval_points) //
-                / interval_total;
-            const auto ratio_point_end = 1. - ratio_begin_point;
 
-            const auto rotate_vec_point_end = Eigen::Vector3d { ratio_point_end * rotate_vec };
+            const auto ratio_begin_point = point.offset_time / timestamp_end;
+            const auto ratio_point_end   = 1. - ratio_begin_point;
+
+            const auto rotate_vec_point_end = Eigen::Vector3d { 1. * ratio_point_end * rotate_vec };
             const auto rotation_point_end   = Sophus::SO3d::exp(rotate_vec_point_end);
 
             const auto translation_point_end = Eigen::Vector3d { ratio_point_end * translation };
@@ -105,15 +107,21 @@ private:
                 * Eigen::Vector3d { point_current - translation_point_end };
 
             const auto point_result = lid_transform * point_undistort;
-            output->points[index].x = point_result.x();
-            output->points[index].y = point_result.y();
+            output->points[index].x = point_result.x(), output->points[index].y = point_result.y(),
             output->points[index].z = point_result.z();
 
             index = index + 1;
 
-            // if (const auto array_index = index / 1'000; index % 1'000 == 0)
+            // if (const auto array_index = index / 1'000; index % 1'000 == 0) {
             //     ratios_point_end[array_index] = ratio_point_end;
+            //     points_origin[array_index]    = point_current;
+            //     points_undistort[array_index] = point_undistort;
+            // }
         }
+
+        output->width    = output->size();
+        output->height   = 1;
+        output->is_dense = true;
 
         // auto ratios_string = std::string {};
         // for (const auto& ratio : ratios_point_end)
@@ -121,12 +129,19 @@ private:
         //
         // log.info("total interval: %.4f, points interval: %.4f, ratios: %s", interval_total,
         //     interval_points, ratios_string.c_str());
-
+        //
         // auto rotation_text = std::string {};
         // rotation_text += "X: " + std::to_string(imu_transform.angleX()) + "rad ";
         // rotation_text += "Y: " + std::to_string(imu_transform.angleY()) + "rad ";
         // rotation_text += "Z: " + std::to_string(imu_transform.angleZ()) + "rad ";
         // log.info("%s", rotation_text.c_str());
+        //
+        // for (auto index = 0; index < points_origin.size(); index++) {
+        //     log.info("Origin:    %+.4f %+.4f %+.4f", points_origin[index].x(),
+        //         points_origin[index].y(), points_origin[index].z());
+        //     log.info("Undistort: %+.4f %+.4f %+.4f", points_undistort[index].x(),
+        //         points_undistort[index].y(), points_undistort[index].z());
+        // }
     }
 };
 

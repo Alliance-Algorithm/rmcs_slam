@@ -13,8 +13,8 @@ constexpr auto kProcessBeginMsg = "Handle process of dedistortion starts";
 constexpr auto kStopRequestMsg  = "Undistortion process is requested to stop";
 constexpr auto kResetRequestMsg = "Undistortion process is requested to reset";
 
-using lid_capacity = boost::lockfree::capacity<05>;
-using imu_capacity = boost::lockfree::capacity<20>;
+using lid_capacity = boost::lockfree::capacity<010>;
+using imu_capacity = boost::lockfree::capacity<200>;
 
 struct Undistortion::Impl {
     using Point      = pcl::PointXYZ;

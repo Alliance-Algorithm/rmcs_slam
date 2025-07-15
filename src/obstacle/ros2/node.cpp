@@ -33,10 +33,11 @@ struct RmcsMapRuntime::Impl {
     Process process;
     std::vector<std::unique_ptr<Factory>> factories;
 
-    bool switch_publish = false;
-    double lidar_blind  = 0;
-    double map_width    = 0;
-    double map_height   = 0;
+    bool switch_publish  = false;
+    bool switch_obstacle = false;
+    double lidar_blind   = 0;
+    double map_width     = 0;
+    double map_height    = 0;
 
     // 多重点云积累生成障碍地图，适用于点云比较稀疏的情况
     int frame_limit = 1;
@@ -109,7 +110,7 @@ struct RmcsMapRuntime::Impl {
         };
 
         const auto callback = [this](const auto& p0, const auto& p1) {
-            pointcloud_preprocess(p0, p1);
+            if (switch_obstacle) pointcloud_preprocess(p0, p1);
         };
         const auto lid_topics = p("lidar.lid_topics", std::vector<std::string> {});
         const auto imu_topics = p("lidar.imu_topics", std::vector<std::string> {});
@@ -160,6 +161,7 @@ struct RmcsMapRuntime::Impl {
 
         const auto timestamp_finish = std::chrono::high_resolution_clock::now();
         const auto seconds = std::chrono::duration<double>(timestamp_finish - timestamp_begin);
+
         log.info("Porcess cost seconds: %10.5fs", seconds.count());
     }
 

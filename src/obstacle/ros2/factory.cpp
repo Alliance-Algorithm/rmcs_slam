@@ -1,6 +1,7 @@
 #include "factory.hpp"
 #include "ros2/convert.hpp"
 #include "undistortion/undistortion.hpp"
+#include "util/string.hpp"
 
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/subscription.hpp>
@@ -15,6 +16,7 @@ using LidMsg = livox_ros_driver2::msg::CustomMsg;
 using ImuMsg = sensor_msgs::msg::Imu;
 using LidSub = rclcpp::Subscription<LidMsg>;
 using ImuSub = rclcpp::Subscription<ImuMsg>;
+using LidPub = rclcpp::Publisher<sensor_msgs::msg::PointCloud2>;
 
 struct Factory::Impl {
     util::Log<kLogName> log;
@@ -33,6 +35,9 @@ struct Factory::Impl {
     std::shared_ptr<rclcpp::TimerBase> async_callback_scheduler;
     std::shared_ptr<LidSub> lid_subscription;
     std::shared_ptr<ImuSub> imu_subscription;
+    std::shared_ptr<LidPub> lid_publisher;
+
+    bool publish_undistort_pointcloud = true;
 
     explicit Impl(rclcpp::Node& node)
         : node_reference { node } { }
@@ -60,10 +65,19 @@ struct Factory::Impl {
             imu_topic, 10, [this](std::unique_ptr<ImuMsg> msg) {
                 undistortion_core.push_imu_message(std::move(msg));
             });
+        lid_publisher = node_reference.create_publisher<sensor_msgs::msg::PointCloud2>(
+            lid_topic + "/undistort", 10);
 
         using namespace std::chrono_literals;
-        async_callback_scheduler = node_reference.create_wall_timer(5ms, [this, process] {
+        async_callback_scheduler = node_reference.create_wall_timer(10ms, [this, process] {
             if (auto pointcloud = undistortion_core.try_query_undistort_cloud()) {
+                if (publish_undistort_pointcloud) {
+                    auto msg = sensor_msgs::msg::PointCloud2 {};
+                    pcl::toROSMsg(*pointcloud, msg);
+                    msg.header.stamp    = newest_message_header.stamp;
+                    msg.header.frame_id = string::robot_link;
+                    lid_publisher->publish(msg);
+                }
                 process(pointcloud, newest_message_header);
             }
         });

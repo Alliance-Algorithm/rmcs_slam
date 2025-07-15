@@ -17,11 +17,11 @@ rmcs_map:
 
       lid_topics: [
         "/livox/lidar_192_168_100_120",
-        "/livox/lidar_192_168_100_174_",
+        "/livox/lidar_192_168_100_174",
       ]
       imu_topics: [
         "/livox/imu_192_168_100_120",
-        "/livox/imu_192_168_100_174_",
+        "/livox/imu_192_168_100_174",
       ]
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
@@ -40,7 +40,7 @@ rmcs_map:
 
       # 单帧点云浮动比较大，多帧累积起来障碍物会拖长，
       # 以及未纠正到位的旋转畸变会叠加，但障碍地图会稳定很多
-      livox_frames: 2
+      livox_frames: 1
 
     segmentation:
       # 点云分割中迭代的最大相邻点的距离
@@ -64,14 +64,14 @@ rmcs_map:
       height_limit: 0.06
       # 影响半径，一个点的高度信息可以影响的圆形区域
       # 为了弥补点云密度不够的补偿
-      influence_radius: 0.04
+      influence_radius: 0.00
 
     filter:
       # 预先膨胀，为了更好的闭合障碍物
       pre_dilate_size: 15
-      pre_dilate_times: 1
+      pre_dilate_times: 0
       # 闭合，拟补激光雷达点云的缺口
       pre_close_size: 3
-      pre_close_times: 1
+      pre_close_times: 0
       # 最后膨胀提升容错率
       dilate_size: 0
