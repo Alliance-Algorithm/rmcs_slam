@@ -38,8 +38,7 @@ struct Undistortion::Impl {
     std::jthread process_thread;
 
     std::atomic<bool> request_reset { false };
-
-    std::condition_variable bind_action_notifiction;
+    std::atomic<bool> request_cancel_binding { false };
 
     explicit Impl() noexcept
         : process_thread { [this](const std::stop_token& stop_token) {
@@ -65,6 +64,17 @@ struct Undistortion::Impl {
                     orthotics.process(output, package);
 
                     undistort_pointcloud_buffer.push(output);
+
+                    log.info("Imu size: %ld", package.imu_msg.size());
+
+                    // const auto lid_timestamp =
+                    //     rclcpp::Time { package.lid_msg->header.stamp }.seconds();
+                    // const auto imu_timestamp_back =
+                    //     rclcpp::Time { package.imu_msg.back()->header.stamp }.seconds();
+                    // const auto imu_timestamp_head =
+                    //     rclcpp::Time { package.imu_msg.front()->header.stamp }.seconds();
+                    // log.info("Lid: %.5fs, Imu back: %.5fs, Imu head: %.5fs", lid_timestamp,
+                    //     imu_timestamp_back, imu_timestamp_head);
                 }
 
                 process_rate.sleep();
@@ -78,37 +88,38 @@ struct Undistortion::Impl {
 
     auto stop_process() -> void { process_thread.request_stop(); }
 
-    auto try_query_undistort_cloud() -> std::shared_ptr<ImuOrthotics::CloudXYZ> {
+    auto try_query_undistort_cloud() -> std::shared_ptr<PointCloud> {
         if (undistort_pointcloud_buffer.empty()) return nullptr;
 
-        auto result = std::make_shared<ImuOrthotics::CloudXYZ>();
-        if (undistort_pointcloud_buffer.pop(result)) return result;
-        else return nullptr;
+        auto result = std::make_shared<PointCloud>();
+        if (undistort_pointcloud_buffer.pop(result)) {
+            return result;
+        }
+
+        return nullptr;
     }
 
-    auto handle_lid_message(std::unique_ptr<LivMsg> msg) -> void {
-        log.info("Handle lid message");
-
+    auto push_lid_message(std::unique_ptr<LivMsg> msg) -> void {
         const auto timestamp = rclcpp::Time { msg->header.stamp };
         if (timestamp.nanoseconds() < last_lid_timestamp) {
+            request_cancel_binding.store(true);
             while (livox_lid_buffer.pop()) { };
             log.warn("Timestamp of lidar loop back");
         }
         last_lid_timestamp = timestamp.nanoseconds();
 
-        const auto release = msg.release();
-        livox_lid_buffer.push(release);
+        livox_lid_buffer.push(msg.release());
     }
-    auto handle_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
+    auto push_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
         const auto timestamp = rclcpp::Time { msg->header.stamp };
         if (timestamp.nanoseconds() < last_imu_timestamp) {
+            request_cancel_binding.store(true);
             while (livox_imu_buffer.pop()) { }
             log.warn("Timestamp of imu loop back");
         }
         last_imu_timestamp = timestamp.nanoseconds();
 
-        const auto release = msg.release();
-        livox_imu_buffer.push(release);
+        livox_imu_buffer.push(msg.release());
     }
 
 private:
@@ -148,6 +159,13 @@ private:
             } else break;
         }
 
+        if (result.imu_msg.empty()) return std::nullopt;
+
+        if (request_cancel_binding.load()) {
+            request_cancel_binding.store(false);
+            return std::nullopt;
+        }
+
         return result;
     }
 };
@@ -165,12 +183,12 @@ auto Undistortion::set_lid_transform(const Eigen::Isometry3d& t) -> void {
     pimpl->orthotics.set_lid_transform(t);
 }
 
-auto Undistortion::handle_lid_message(std::unique_ptr<LivMsg> msg) -> void {
-    pimpl->handle_lid_message(std::move(msg));
+auto Undistortion::push_lid_message(std::unique_ptr<LivMsg> msg) -> void {
+    pimpl->push_lid_message(std::move(msg));
 }
 
-auto Undistortion::handle_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
-    pimpl->handle_imu_message(std::move(msg));
+auto Undistortion::push_imu_message(std::unique_ptr<ImuMsg> msg) -> void {
+    pimpl->push_imu_message(std::move(msg));
 }
 
 auto Undistortion::stop_process() -> void { pimpl->stop_process(); }

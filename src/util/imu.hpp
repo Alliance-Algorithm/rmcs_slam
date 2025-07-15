@@ -18,7 +18,7 @@ public:
         if (!is_initialized_.load(std::memory_order::relaxed) || results_.empty())
             is_initialized_.store(initialize(data), std::memory_order::relaxed);
 
-        const auto [last_imu_data, last_rotation] = results_.back();
+        const auto& [last_imu_data, last_rotation] = results_.back();
 
         const auto last_gyr = Eigen::Vector3d {
             last_imu_data.angular_velocity.x,

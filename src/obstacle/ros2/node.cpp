@@ -160,7 +160,7 @@ struct RmcsMapRuntime::Impl {
 
         const auto timestamp_finish = std::chrono::high_resolution_clock::now();
         const auto seconds = std::chrono::duration<double>(timestamp_finish - timestamp_begin);
-        // log.info("Porcess cost seconds: %10.5fs", seconds.count());
+        log.info("Porcess cost seconds: %10.5fs", seconds.count());
     }
 
     auto pointcloud_process(const std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>& pointcloud,

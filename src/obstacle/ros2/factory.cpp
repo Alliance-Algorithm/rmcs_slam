@@ -54,15 +54,15 @@ struct Factory::Impl {
         lid_subscription = node_reference.create_subscription<LidMsg>(
             lid_topic, 10, [this](std::unique_ptr<LidMsg> msg) {
                 newest_message_header = msg->header;
-                undistortion_core.handle_lid_message(std::move(msg));
+                undistortion_core.push_lid_message(std::move(msg));
             });
         imu_subscription = node_reference.create_subscription<ImuMsg>(
             imu_topic, 10, [this](std::unique_ptr<ImuMsg> msg) {
-                undistortion_core.handle_imu_message(std::move(msg));
+                undistortion_core.push_imu_message(std::move(msg));
             });
 
         using namespace std::chrono_literals;
-        async_callback_scheduler = node_reference.create_wall_timer(10ms, [this, process] {
+        async_callback_scheduler = node_reference.create_wall_timer(5ms, [this, process] {
             if (auto pointcloud = undistortion_core.try_query_undistort_cloud()) {
                 process(pointcloud, newest_message_header);
             }

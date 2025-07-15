@@ -5,12 +5,11 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 
-constexpr auto kNameGetter = [] { return "orthotics"; };
-constexpr auto kEnableLog  = false;
 using namespace rmcs;
+using Logger = util::Log<[] { return "orthotics"; }>;
 
 struct ImuOrthotics::Impl {
-    util::Log<kNameGetter> log;
+    Logger log;
     util::Imu imu;
 
     Eigen::Isometry3d transform_lidar_robot { Eigen::Isometry3d::Identity() };
@@ -46,15 +45,16 @@ struct ImuOrthotics::Impl {
             return;
         }
 
-        integrate(package.imu_msg);
+        this->integrate(package.imu_msg);
 
         const auto transform = Sophus::SE3d { imu.rotation(), Eigen::Vector3d::Zero() };
         const auto transform_total =
             transform_lidar_imu.inverse() * transform * transform_lidar_imu;
-        const auto interval_total = util::get_time_sec(package.lid_msg->header.stamp)
-            - util::get_time_sec(last_lid->header.stamp);
+        const auto interval_total = rclcpp::Time(package.lid_msg->header.stamp).seconds()
+            - rclcpp::Time(last_lid->header.stamp).seconds();
 
-        undistort(output, package.lid_msg, interval_total, transform_total, transform_lidar_robot);
+        this->undistort(
+            output, package.lid_msg, interval_total, transform_total, transform_lidar_robot);
 
         *last_lid = *package.lid_msg;
         *last_imu = *package.imu_msg.back();
@@ -71,34 +71,29 @@ private:
 
         for (const auto& imu_frame : data)
             imu.update(*imu_frame);
-
-        if constexpr (kEnableLog) {
-            const auto to_degree = [](double angle) { return angle * 180. / std::numbers::pi; };
-
-            const auto x = to_degree(imu.rotation().angleX());
-            const auto y = to_degree(imu.rotation().angleY());
-            const auto z = to_degree(imu.rotation().angleZ());
-
-            const auto format = "Integrate rotation angle [x, y, z]: [%.2f, %.2f, %.2f]";
-            log.info(format, x, y, z);
-        }
     }
 
     /// @note 事实上，源代码这里风格极其糟糕，这是不得不吐槽的事实
     template <concept_point Point>
-    static inline auto undistort(std::shared_ptr<pcl::PointCloud<Point>>& output,
+    inline auto undistort(std::shared_ptr<pcl::PointCloud<Point>>& output,
         const std::unique_ptr<LivMsg>& source, double interval_total,
         const Sophus::SE3d& imu_transform, const Eigen::Isometry3d& lid_transform) -> void {
 
         const auto& translation = Eigen::Vector3d { imu_transform.translation() };
         const auto& rotate_vec  = Eigen::Vector3d { imu_transform.so3().log() };
 
+        const auto timestamp_end   = static_cast<double>(source->points.back().offset_time);
+        const auto interval_points = timestamp_end * 1e-9;
+
+        // std::array<double, 20> ratios_point_end;
+
         output->clear();
         output->resize(source->point_num);
         auto index = std::size_t { 0 };
         for (const auto& point : source->points) {
-            const auto ratio_begin_point = point.interval_ratio;
-            const auto ratio_point_end   = 1. - ratio_begin_point;
+            const auto ratio_begin_point = (point.offset_time / timestamp_end * interval_points) //
+                / interval_total;
+            const auto ratio_point_end = 1. - ratio_begin_point;
 
             const auto rotate_vec_point_end = Eigen::Vector3d { ratio_point_end * rotate_vec };
             const auto rotation_point_end   = Sophus::SO3d::exp(rotate_vec_point_end);
@@ -114,11 +109,24 @@ private:
             output->points[index].y = point_result.y();
             output->points[index].z = point_result.z();
 
-            index++;
+            index = index + 1;
+
+            // if (const auto array_index = index / 1'000; index % 1'000 == 0)
+            //     ratios_point_end[array_index] = ratio_point_end;
         }
-        output->width    = output->size();
-        output->height   = 1;
-        output->is_dense = true;
+
+        // auto ratios_string = std::string {};
+        // for (const auto& ratio : ratios_point_end)
+        //     ratios_string += std::to_string(ratio) + " ";
+        //
+        // log.info("total interval: %.4f, points interval: %.4f, ratios: %s", interval_total,
+        //     interval_points, ratios_string.c_str());
+
+        // auto rotation_text = std::string {};
+        // rotation_text += "X: " + std::to_string(imu_transform.angleX()) + "rad ";
+        // rotation_text += "Y: " + std::to_string(imu_transform.angleY()) + "rad ";
+        // rotation_text += "Z: " + std::to_string(imu_transform.angleZ()) + "rad ";
+        // log.info("%s", rotation_text.c_str());
     }
 };
 

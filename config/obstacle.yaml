@@ -17,11 +17,11 @@ rmcs_map:
 
       lid_topics: [
         "/livox/lidar_192_168_100_120",
-        "/livox/lidar_192_168_100_174",
+        "/livox/lidar_192_168_100_174_",
       ]
       imu_topics: [
         "/livox/imu_192_168_100_120",
-        "/livox/imu_192_168_100_174",
+        "/livox/imu_192_168_100_174_",
       ]
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
