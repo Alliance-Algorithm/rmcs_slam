@@ -65,7 +65,7 @@ struct Undistortion::Impl {
 
                     undistort_pointcloud_buffer.push(output);
 
-                    log.info("Imu size: %ld", package.imu_msg.size());
+                    // log.info("Imu size: %ld", package.imu_msg.size());
 
                     // const auto lid_timestamp =
                     //     rclcpp::Time { package.lid_msg->header.stamp }.seconds();

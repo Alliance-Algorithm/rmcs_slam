@@ -43,10 +43,22 @@ struct Factory::Impl {
         : node_reference { node } { }
 
     auto build_normal_mode(const Callback& process) -> void {
+        lid_publisher = node_reference.create_publisher<sensor_msgs::msg::PointCloud2>(
+            lid_topic + "/origin", 10);
+
         lid_subscription = node_reference.create_subscription<LidMsg>(lid_topic, 10, //
             [process, this](const std::unique_ptr<LidMsg>& msg) {
                 auto pointcloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
                 livox_to_pcl(msg->points, *pointcloud, lid_assembly_transform);
+
+                if (publish_undistort_pointcloud) {
+                    auto msg = sensor_msgs::msg::PointCloud2 {};
+                    pcl::toROSMsg(*pointcloud, msg);
+                    msg.header.stamp    = newest_message_header.stamp;
+                    msg.header.frame_id = string::robot_link;
+                    lid_publisher->publish(msg);
+                }
+
                 process(pointcloud, msg->header);
             });
         log.info("Create subscription %s", lid_topic.c_str());
