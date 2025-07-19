@@ -10,8 +10,6 @@ rmcs_slam:
       enable: true
       lidar_topic: "/livox/lidar_192_168_100_120"
       imu_topic: "/livox/imu_192_168_100_120"
-      lidar_topic: "/livox/lidar_192_168_100_120"
-      imu_topic: "/livox/imu_192_168_100_120"
       # 雷达原点在底盘坐标系的坐标
       # 单位是m，浮点数
       x: +0.14
